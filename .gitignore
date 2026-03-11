@@ -7,12 +7,14 @@
 *.png
 *_queries
 *.lz77
+*.approx_lz77
 *.slp-pruned
 *.prune_slp
 *.py
 *.slg
 *.slp
 recomp
+recomp_query
 test
 !test/
 env

@@ -6,13 +6,13 @@ CFLAGS = -funroll-loops -O3 -DNDEBUG -march=native -std=c++17 -pthread
 
 INCLUDES = -Iinclude
 
-all: recomp
+all: recomp_query
 
-recomp:
-	$(CC) $(CFLAGS) $(INCLUDES) $(WARNINGS) -o recomp ./src/*.cpp
+recomp_query:
+	$(CC) $(CFLAGS) $(INCLUDES) $(WARNINGS) -o recomp_query ./src/*.cpp
 
 clean:
 	/bin/rm -f *.o
 
 nuclear:
-	/bin/rm -f recomp *.o
+	/bin/rm -f recomp_query *.o
