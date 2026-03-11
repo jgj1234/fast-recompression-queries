@@ -86,7 +86,7 @@ RecompressionRLSLP* recompression_on_slp(InputSLP* s) {
 
   // For 0.
   recompression_rlslp->nonterm.push_back(RLSLPNonterm());
-
+  recompression_rlslp->nonterm.back().level = 0;
   // Compute S0 from S and Initialize Recompression
   for(len_t i = 0; i < s->nonterm.size(); ++i) {
     const char_t &type = s->nonterm[i].type;
@@ -102,6 +102,8 @@ RecompressionRLSLP* recompression_on_slp(InputSLP* s) {
       // Here first is the ASCII values of the character.
       recompression_rlslp->nonterm.push_back(
         RLSLPNonterm('0', first, second));
+      recompression_rlslp->nonterm.back().level = 0;
+
     }
     else {
       slg->rhs.push_back(first);
@@ -154,7 +156,7 @@ RecompressionRLSLP* recompression_on_slp(InputSLP* s) {
 
       auto start_time = std::chrono::high_resolution_clock::now();
 
-      slg = BComp(slg, recompression_rlslp);
+      slg = BComp(slg, recompression_rlslp, i);
 
       auto end_time = std::chrono::high_resolution_clock::now();
 
@@ -178,7 +180,7 @@ RecompressionRLSLP* recompression_on_slp(InputSLP* s) {
 
       auto start_time = std::chrono::high_resolution_clock::now();
 
-      slg = PComp(slg, recompression_rlslp);
+      slg = PComp(slg, recompression_rlslp, i);
 
       auto end_time = std::chrono::high_resolution_clock::now();
 

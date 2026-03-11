@@ -11,7 +11,8 @@ void combineFrequenciesInRange(
   /* map<pair<c_size_t, c_size_t>, c_size_t> &m */
   hash_table<packed_pair<c_size_t, c_size_t>, c_size_t, c_size_t>& m,
   RecompressionRLSLP *recompression_rlslp,
-  space_efficient_vector<c_size_t>& new_rhs) {
+  space_efficient_vector<c_size_t>& new_rhs,
+  c_size_t roundNum) {
 
   typedef packed_pair<c_size_t, c_size_t> pair_type;
 
@@ -48,6 +49,8 @@ void combineFrequenciesInRange(
             m.insert(p, recompression_rlslp->nonterm.size());
             recompression_rlslp->nonterm.push_back(
               RLSLPNonterm('2', abs(p.first), p.second));
+          recompression_rlslp->nonterm.back().level = roundNum;
+
           }
           //  ** Negative **
           new_rhs.push_back(-m[p]);
@@ -74,6 +77,7 @@ void combineFrequenciesInRange(
       m.insert(p, recompression_rlslp->nonterm.size());
       recompression_rlslp->nonterm.push_back(
         RLSLPNonterm('2', abs(p.first), p.second));
+      recompression_rlslp->nonterm.back().level = roundNum;
     }
     //  ** Negative **
     new_rhs.push_back(-m[p]);
@@ -88,7 +92,7 @@ void combineFrequenciesInRange(
 }
 
 // Block Compression
-SLG* BComp(SLG *slg, RecompressionRLSLP *recompression_rlslp) {
+SLG* BComp(SLG *slg, RecompressionRLSLP *recompression_rlslp, c_size_t roundNum) {
   hash_table<packed_pair<c_size_t, c_size_t>, c_size_t, c_size_t> m;
 
   // Current slg non-term list
@@ -281,7 +285,7 @@ SLG* BComp(SLG *slg, RecompressionRLSLP *recompression_rlslp) {
       // Compress Cap(middle part)
       combineFrequenciesInRange(
         rhs_expansion, lr_pointer, rr_pointer, new_slg_nonterm_vec, m,
-        recompression_rlslp, new_rhs);
+        recompression_rlslp, new_rhs, roundNum);
     }
   }
   #ifdef DEBUG_LOG
@@ -345,6 +349,8 @@ SLG* BComp(SLG *slg, RecompressionRLSLP *recompression_rlslp) {
         m.insert(start_var_LR, recompression_rlslp->nonterm.size());
         recompression_rlslp->nonterm.push_back(
           RLSLPNonterm('2', abs(start_var_LR.first), start_var_LR.second));
+        recompression_rlslp->nonterm.back().level = roundNum;
+        
       }
       new_rhs.push_back(-m[start_var_LR]);
     }
@@ -372,6 +378,7 @@ SLG* BComp(SLG *slg, RecompressionRLSLP *recompression_rlslp) {
         m.insert(start_var_RR, recompression_rlslp->nonterm.size());
         recompression_rlslp->nonterm.push_back(
           RLSLPNonterm('2', abs(start_var_RR.first), start_var_RR.second));
+        recompression_rlslp->nonterm.back().level = roundNum;
       }
       new_rhs.push_back(-m[start_var_RR]);
     }

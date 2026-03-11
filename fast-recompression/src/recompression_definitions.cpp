@@ -60,7 +60,6 @@ void RecompressionRLSLP::write_to_file(const string& filename) {
 
   for (len_t i = 0; i < nonterm.size(); ++i) {
     const RLSLPNonterm& rlslpNonterm = nonterm[i];
-
     // Write type
     ofs.write(reinterpret_cast<const char*>(&rlslpNonterm.type),
               sizeof(rlslpNonterm.type));
@@ -71,6 +70,10 @@ void RecompressionRLSLP::write_to_file(const string& filename) {
 
     // Write second
     ofs.write(reinterpret_cast<const char*>(&rlslpNonterm.second),
+              sizeof(c_size_t));
+    
+
+    ofs.write(reinterpret_cast<const char*>(&rlslpNonterm.level),
               sizeof(c_size_t));
   }
 
@@ -103,7 +106,10 @@ void RecompressionRLSLP::read_from_file(const string& filename) {
       // Read second
       ifs.read(reinterpret_cast<char*>(&rlslpNonterm.second),
                sizeof(c_size_t));
-
+               
+      // Read level
+      ifs.read(reinterpret_cast<char*>(&rlslpNonterm.level), 
+              sizeof(c_size_t));
       nonterm.push_back(rlslpNonterm);
     }
 

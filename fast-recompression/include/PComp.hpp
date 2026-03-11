@@ -756,7 +756,7 @@ space_efficient_vector<bool> * createRandomPartition(SLG *slg) {
 }
 
 // Pair-Wise Compression
-SLG * PComp(SLG *slg, RecompressionRLSLP *recompression_rlslp) {
+SLG * PComp(SLG *slg, RecompressionRLSLP *recompression_rlslp, c_size_t roundNum) {
     auto start_time = std::chrono::high_resolution_clock::now(), end_time = start_time;
     hash_table<packed_pair<c_size_t, c_size_t>, c_size_t, c_size_t> m;
 
@@ -942,6 +942,7 @@ SLG * PComp(SLG *slg, RecompressionRLSLP *recompression_rlslp) {
                             // m[{rhs_expansion[j], rhs_expansion[j+1]}] = recompression_rlslp->nonterm.size();
                             m.insert(pair_type(rhs_expansion[j], rhs_expansion[j+1]), recompression_rlslp->nonterm.size());
                             recompression_rlslp->nonterm.push_back(RLSLPNonterm('1', abs(rhs_expansion[j]), abs(rhs_expansion[j+1])));
+                            recompression_rlslp->nonterm.back().level = roundNum;
                         }
 
                         new_rhs.push_back(-m[pair_type(rhs_expansion[j], rhs_expansion[j+1])]);

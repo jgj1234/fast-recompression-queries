@@ -20,7 +20,7 @@ struct __attribute__((packed)) RLSLPNonterm {
   c_size_t first;
   c_size_t second;
   c_size_t explen;
-
+  c_size_t level;
   RLSLPNonterm();
 
   RLSLPNonterm(
