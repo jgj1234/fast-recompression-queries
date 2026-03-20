@@ -246,9 +246,9 @@ void RecompressionRLSLP::constructTrees(){
     }
   }
   leftMT = MacroMicroTree(n, leftg);
-  leftMT.levelMask = move(lmask);
+  leftMT.levelMask = lmask;
   rightMT = MacroMicroTree(n, rightg);
-  rightMT.levelMask = move(rmask);
+  rightMT.levelMask = rmask;
 }
 void RecompressionRLSLP::initialize_firstNodes(
   c_size_t node, 
