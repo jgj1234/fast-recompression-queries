@@ -13,6 +13,7 @@
 *.py
 *.slg
 *.slp
+.DS_Store
 recomp
 recomp_query
 test
