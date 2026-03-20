@@ -1,6 +1,6 @@
 #include "2DRangeQuery.hpp"
 #include "recompression_definitions.hpp"
-
+/*
 RangeQuery::RangeQuery(){
     
 }
@@ -117,7 +117,8 @@ c_size_t RangeQuery::rangeMinimum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_
 c_size_t RangeQuery::rangeSum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
     
 }
-/*
+*/
+
 RangeQuery::RangeQuery(){
     
 }
@@ -177,4 +178,4 @@ c_size_t RangeQuery::rangeSum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2
         }
     }
     return result;
-}*/
+}
