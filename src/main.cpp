@@ -1,5 +1,7 @@
 #include "recompression_definitions.hpp"
 #include "2DRangeQuery.hpp"
+#include "CountQueryComponent.hpp"
+#include "ReportQueryComponent.hpp"
 
 #include <fstream>
 #include <memory>
@@ -10,6 +12,18 @@ struct NonTerminalInfo{
     Fragment leftFragment, rightFragment;
     c_size_t nonterm, minWeight, countWeight;
     NonTerminalInfo(){
+    }
+    NonTerminalInfo(Fragment leftFragment, 
+        Fragment rightFragment, 
+        c_size_t nonterm, 
+        c_size_t minWeight, 
+        c_size_t countWeight):
+        leftFragment(leftFragment),
+        rightFragment(rightFragment),
+        nonterm(nonterm),
+        minWeight(minWeight),
+        countWeight(countWeight) {
+
     }
 };
 struct NonTermInfoReverseComparator{
@@ -53,6 +67,7 @@ void reverseRLSLP(c_size_t node, RecompressionRLSLP* recomp_rlslp, Recompression
     const RLSLPNonterm& nt = recomp_rlslp->nonterm[node];
     rev_rlslp->nonterm[node].explen = nt.explen;
     rev_rlslp->nonterm[node].type = nt.type;
+    rev_rlslp->nonterm[node].level = nt.level;
     if (nt.type == '0'){
         rev_rlslp->nonterm[node].first = nt.first;
         rev_rlslp->nonterm[node].second = nt.second;
@@ -134,10 +149,10 @@ space_efficient_vector<c_size_t> mapToRange(c_size_t start, c_size_t length, c_s
     resultRange[3] = yRange.second;
     return resultRange;
 }
-space_efficient_vector<c_size_t> reportOccurrences(RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* rev_rlslp, c_size_t index, c_size_t length, RangeQuery& rectangleQuery){
+space_efficient_vector<c_size_t> reportOccurrences(RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* rev_rlslp, c_size_t index, c_size_t length, RangeQuery& rectangleQuery, ReportQueryComponent& reportComp){
     if (length == 1){
         c_size_t symbol = recomp_rlslp->getSymbol(index);
-        space_efficient_vector<Node> nodes = recomp_rlslp->enumerateNodes(symbol);
+        space_efficient_vector<Node> nodes = reportComp.enumerateNodes(recomp_rlslp->nonterm, symbol);
         space_efficient_vector<c_size_t> left(nodes.size());
         for (c_size_t i = 0; i < nodes.size(); i++){
             left[i] = nodes[i].l;
@@ -154,7 +169,7 @@ space_efficient_vector<c_size_t> reportOccurrences(RecompressionRLSLP* recomp_rl
             c_size_t hook = vars[j];
             c_size_t leftChild = recomp_rlslp->nonterm[hook].first;
             c_size_t leftLength = recomp_rlslp->nonterm[leftChild].explen;
-            space_efficient_vector<Node> nontermOccs = recomp_rlslp->enumerateNodes(hook);
+            space_efficient_vector<Node> nontermOccs = reportComp.enumerateNodes(recomp_rlslp->nonterm, hook);
             char hookType = recomp_rlslp->nonterm[hook].type;
             c_size_t occTimes = hookType == '1' ? 1 : recomp_rlslp->nonterm[hook].second - (length - anchorLength + leftLength - 1) / leftLength;
             for (c_size_t k = 0; k < nontermOccs.size(); k++){
@@ -192,10 +207,10 @@ c_size_t getLeftMostOccurrence(RecompressionRLSLP* recomp_rlslp, RecompressionRL
     }
     return result;
 }
-c_size_t countRegularOccurrences(RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* reverse_rlslp, c_size_t index, c_size_t length, RangeQuery& countQuery){
+c_size_t countRegularOccurrences(RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* reverse_rlslp, c_size_t index, c_size_t length, RangeQuery& countQuery, CountQueryComponent& countComp){
     if (length == 1){
         c_size_t symbol = recomp_rlslp->getSymbol(index);
-        return recomp_rlslp->countNodes[symbol];
+        return countComp.countNodes[symbol];
     }
     space_efficient_vector<c_size_t> anchors = recomp_rlslp->getAnchors(index, length);
     c_size_t result = 0;
@@ -207,69 +222,8 @@ c_size_t countRegularOccurrences(RecompressionRLSLP* recomp_rlslp, Recompression
     }
     return result;
 }
-c_size_t leftMostIPMQuery(c_size_t xl, c_size_t xr, c_size_t yl, c_size_t yr, RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* reverse_rlslp){
-    //left most position of x in y relative to y (1 indexed)
-    space_efficient_vector<Node> hooks;
-    c_size_t n = recomp_rlslp->nonterm.back().explen;
-    c_size_t xLength = xr - xl + 1;
-    recomp_rlslp->getPotentialHooks(recomp_rlslp->nonterm.size() - 1, 0, n - 1, yl, yr, xLength, hooks);
-    space_efficient_vector<c_size_t> anchors = recomp_rlslp->getAnchors(xl, xLength);
-    c_size_t leftPos = numeric_limits<c_size_t>::max();
-    for (c_size_t i = 0; i < anchors.size(); i++){
-        c_size_t anchorLength = anchors[i];
-        for (c_size_t j = 0; j < hooks.size(); j++){
-        Node hook = hooks[j];
-        const RLSLPNonterm& nt = recomp_rlslp->nonterm[hook.var];
-        if (nt.type == '0'){
-            leftPos = min(leftPos, hook.l - (yl - 1));
-        }
-        else if (nt.type == '1'){
-            c_size_t leftLength = recomp_rlslp->nonterm[nt.first].explen;
-            c_size_t rightLength = recomp_rlslp->nonterm[nt.second].explen;
-            c_size_t occStart = hook.l + leftLength - anchorLength;
-            if (occStart >= yl){
-                c_size_t leftLCE = min(min(leftLength, anchorLength), reverse_rlslp->lce(n - 1 - (xl + anchorLength - 1), n - 1 - (hook.l + leftLength - 1)));
-                c_size_t rightLCE = min(min(rightLength, xLength - anchorLength), recomp_rlslp->lce(xl + anchorLength, hook.l + leftLength));
-                if (leftLCE >= anchorLength && rightLCE >= xLength - anchorLength){
-                    leftPos = min(leftPos, hook.l + leftLength - anchorLength - (yl - 1));
-                }
-            }
-        }
-        else{
-            c_size_t childLength = recomp_rlslp->nonterm[nt.first].explen;
-            c_size_t k = nt.second;
-            c_size_t minI = 1;
-            if (hook.l + childLength < yl + anchorLength) {
-                c_size_t need = yl + anchorLength - hook.l;
-                minI = (need + childLength - 1) / childLength;
-            }
-            if (minI < k) {
-                c_size_t pos = hook.l + minI * childLength;
-                c_size_t occStart = pos - anchorLength;
-                if (occStart >= yl){
-                    c_size_t leftLCE = min(min(anchorLength, childLength), reverse_rlslp->lce(n - 1 - (xl + anchorLength - 1), n -1 - (pos - 1)));
-                    c_size_t rightLCE = min(min(childLength * (k - minI), xLength - anchorLength), recomp_rlslp->lce(xl + anchorLength, pos));
-                    if (leftLCE >= anchorLength && rightLCE >= xLength - anchorLength){
-                        leftPos = min(leftPos, pos - anchorLength - (yl - 1));
-                    }
-                }
-            }
-        }
-        }
-    }
-    return leftPos;
-}
-c_size_t periodQuery(c_size_t l, c_size_t r, RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* reverse_rlslp){
-    c_size_t length = r - l + 1;
-    c_size_t half = (length + 1) / 2;
-    c_size_t leftOcc = leftMostIPMQuery(l, l + half - 1, l + 1, r, recomp_rlslp, reverse_rlslp);
-    if (leftOcc == numeric_limits<c_size_t>::max()) return -1; // no period found
-    c_size_t lce = recomp_rlslp->lce(l, l + leftOcc);
-    if (lce >= length - leftOcc) return leftOcc;
-    return -1;
-}
-c_size_t countSpecialOccurrences(RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* reverse_rlslp, c_size_t index, c_size_t length, space_efficient_vector<c_size_t>& sortedNonterms, RangeQuery& countQuery){
-    c_size_t period = periodQuery(index, index + length - 1, recomp_rlslp, reverse_rlslp);
+c_size_t countSpecialOccurrences(RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* reverse_rlslp, c_size_t index, c_size_t length, space_efficient_vector<c_size_t>& sortedNonterms, RangeQuery& countQuery, CountQueryComponent& countComp){
+    c_size_t period = countComp.periodQuery(index, index + length - 1, recomp_rlslp, reverse_rlslp);
     if (period == -1) return 0;
     space_efficient_vector<c_size_t> anchors = recomp_rlslp->getAnchors(index, length);
     c_size_t result = 0;
@@ -314,14 +268,14 @@ c_size_t countSpecialOccurrences(RecompressionRLSLP* recomp_rlslp, Recompression
                 }
             }
             if (firstSymbol != -1){
-                result += recomp_rlslp->queryCount(firstSymbol, (length - anchorLength + period - 1) / period);
+                result += countComp.queryCount(firstSymbol, (length - anchorLength + period - 1) / period);
             }
         }
     }
     return result;
 }
-c_size_t countOccurrences(RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* reverse_rlslp, c_size_t index, c_size_t length, space_efficient_vector<c_size_t>& sortedNonterms, RangeQuery& countQuery){
-    return countRegularOccurrences(recomp_rlslp, reverse_rlslp, index, length, countQuery) + countSpecialOccurrences(recomp_rlslp, reverse_rlslp, index, length, sortedNonterms, countQuery);
+c_size_t countOccurrences(RecompressionRLSLP* recomp_rlslp, RecompressionRLSLP* reverse_rlslp, c_size_t index, c_size_t length, space_efficient_vector<c_size_t>& sortedNonterms, RangeQuery& countQuery, CountQueryComponent& countComp){
+    return countRegularOccurrences(recomp_rlslp, reverse_rlslp, index, length, countQuery, countComp) + countSpecialOccurrences(recomp_rlslp, reverse_rlslp, index, length, sortedNonterms, countQuery, countComp);
 }
 int main(int argc, char *argv[]){
     if (argc <= 1){
@@ -353,37 +307,32 @@ int main(int argc, char *argv[]){
     }
     auto recomp_rlslp = make_unique<RecompressionRLSLP>();
     if (!recomp_rlslp->read_from_file(input_file)) exit(1);
-    recomp_rlslp->init(recomp_rlslp->nonterm.size());
+    c_size_t nonterms = recomp_rlslp->nonterm.size();
     auto reverse_rlslp = make_unique<RecompressionRLSLP>();
     recomp_rlslp->initStructures();
-    reverse_rlslp->nonterm.resize(recomp_rlslp->nonterm.size(), RLSLPNonterm('0', -1, -1));
-    reverse_rlslp->init(recomp_rlslp->nonterm.size());
-    reverseRLSLP(recomp_rlslp->nonterm.size() - 1, recomp_rlslp.get(), reverse_rlslp.get());
+    reverse_rlslp->nonterm.resize(nonterms, RLSLPNonterm('0', -1, -1));
+    reverseRLSLP(nonterms - 1, recomp_rlslp.get(), reverse_rlslp.get());
     reverse_rlslp->initStructures();
     recomp_rlslp->constructTrees();
-    c_size_t nonterms = recomp_rlslp->nonterm.size();
+    CountQueryComponent countComp(recomp_rlslp->nonterm);
+    ReportQueryComponent reportComp(recomp_rlslp->nonterm);
     space_efficient_vector<NonTerminalInfo> arr;
     space_efficient_vector<c_size_t> sortedNonterms(nonterms);
     for (c_size_t i = 0; i < nonterms; i++){
         const RLSLPNonterm& nt = recomp_rlslp->nonterm[i];
         sortedNonterms[i] = i;
         if (nt.type != '0'){
-            arr.push_back(NonTerminalInfo());
             const Node& firstNode = recomp_rlslp->firstNodes[i];
             c_size_t leftLength = recomp_rlslp->nonterm[nt.first].explen;
-            Fragment leftFragment(firstNode.l, leftLength);
-            arr.back().leftFragment = leftFragment;
+            Fragment leftFragment(firstNode.l, leftLength), rightFragment;
             if (nt.type == '1'){
-                Fragment rightFragment(firstNode.l + leftLength, recomp_rlslp->nonterm[nt.second].explen);
-                arr.back().rightFragment = rightFragment;
+                rightFragment = Fragment(firstNode.l + leftLength, recomp_rlslp->nonterm[nt.second].explen);
             }
             else{
                 c_size_t k = nt.second;
-                Fragment rightFragment(firstNode.l, leftLength * (k - 1));
-                arr.back().rightFragment = rightFragment;
+                rightFragment = Fragment(firstNode.l, leftLength * (k - 1));
             }
-            arr.back().nonterm = i;
-            arr.back().minWeight = firstNode.l + leftLength;
+            arr.push_back(NonTerminalInfo(leftFragment, rightFragment, i, firstNode.l + leftLength, 0));
         }
     }
     NonTermComparator sortComp(recomp_rlslp.get());
@@ -404,25 +353,20 @@ int main(int argc, char *argv[]){
     for (c_size_t i = 0; i < nonterms; i++){
         const RLSLPNonterm& nt = recomp_rlslp->nonterm[i];
         if (nt.type != '0'){
-            countArr.push_back(NonTerminalInfo());
             const Node& firstNode = recomp_rlslp->firstNodes[i];
             c_size_t leftLength = recomp_rlslp->nonterm[nt.first].explen;
-            Fragment leftFragment(firstNode.l, leftLength);
-            countArr.back().leftFragment = leftFragment;
+            Fragment leftFragment(firstNode.l, leftLength), rightFragment;
             if (nt.type == '1'){
-                Fragment rightFragment(firstNode.l + leftLength, recomp_rlslp->nonterm[nt.second].explen);
-                countArr.back().rightFragment = rightFragment;
-                countArr.back().countWeight = recomp_rlslp->countNodes[i];
+                rightFragment = Fragment(firstNode.l + leftLength, recomp_rlslp->nonterm[nt.second].explen);
+                countArr.push_back(NonTerminalInfo(leftFragment, rightFragment, i, 0, countComp.countNodes[i]));
             }
             else{
                 c_size_t k = nt.second;
-                Fragment rightFragment(firstNode.l, leftLength);
-                countArr.back().rightFragment = rightFragment; //use normal constructor instead of doing this later
-                countArr.back().countWeight = recomp_rlslp->countNodes[i];
-                countArr.push_back(NonTerminalInfo());
-                countArr.back().leftFragment = Fragment(firstNode.l, leftLength);
-                countArr.back().rightFragment = Fragment(firstNode.l, leftLength * 2);
-                countArr.back().countWeight = (k - 2) * recomp_rlslp->countNodes[i];
+                rightFragment = Fragment(firstNode.l, leftLength);
+                countArr.push_back(NonTerminalInfo(leftFragment, rightFragment, i, 0, countComp.countNodes[i]));
+                Fragment leftFragment2(firstNode.l, leftLength);
+                Fragment rightFragment2(firstNode.l, leftLength * 2);
+                countArr.push_back(NonTerminalInfo(leftFragment2, rightFragment2, i, 0, (k - 2) * countComp.countNodes[i]));
             }
         }
     }
@@ -454,7 +398,7 @@ int main(int argc, char *argv[]){
     ofstream ofs;
     ostream* out = &cout;
     if (!output_file.empty()){
-        ofs.open(output_file);
+        ofs.open(output_file, ios::trunc);
         if (!ofs){
             cerr << "Error opening output file: " << output_file << endl;
             exit(1);
@@ -465,7 +409,7 @@ int main(int argc, char *argv[]){
     c_size_t type, index, length;
     while (ifs >> type >> index >> length){
         if (type == 1){
-            space_efficient_vector<c_size_t> results = reportOccurrences(recomp_rlslp.get(), reverse_rlslp.get(), index, length, rectangleQuery);
+            space_efficient_vector<c_size_t> results = reportOccurrences(recomp_rlslp.get(), reverse_rlslp.get(), index, length, rectangleQuery, reportComp);
             for (c_size_t i = 0; i < results.size(); i++){
                 (*out) << results[i] << " ";
             }
@@ -476,7 +420,7 @@ int main(int argc, char *argv[]){
             (*out) << mnOcc << '\n';
         }
         else if (type == 3){
-            c_size_t countOccs = countOccurrences(recomp_rlslp.get(), reverse_rlslp.get(), index, length, sortedNonterms, countQuery);
+            c_size_t countOccs = countOccurrences(recomp_rlslp.get(), reverse_rlslp.get(), index, length, sortedNonterms, countQuery, countComp);
             (*out) << countOccs << '\n';
         }
     }

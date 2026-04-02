@@ -11,6 +11,7 @@
 
 #include "typedefs.hpp"
 #include "utils/space_efficient_vector.hpp"
+#include "utils/space_efficient_vector_2D.hpp"
 #include "utils/packed_pair.hpp"
 #include "MacroMicroTree.hpp"
 using namespace std;
@@ -45,26 +46,17 @@ struct Fragment{
 class RecompressionRLSLP {
 public:
   space_efficient_vector<RLSLPNonterm> nonterm;
-  space_efficient_vector<c_size_t> countNodes;
   space_efficient_vector<Node> firstNodes;
-  space_efficient_vector<space_efficient_vector<c_size_t>> rhsNodeList;
-  space_efficient_vector<space_efficient_vector<packed_pair<c_size_t, c_size_t>>>rhsExpList, countQueryStructure;
-  space_efficient_vector<c_size_t> pCompMask, bCompMask;
+  BitVector pCompMask, bCompMask;
   MacroMicroTree leftMT, rightMT;
   uint64_t ram_use() const;
   void write_to_file(const string &filename);
   bool read_from_file(const string &filename);
-  void init(c_size_t sz);
   void initStructures();
   void computeExplen();
   void constructTrees();
   void initialize_firstNodes(c_size_t node, c_size_t left, c_size_t right, const space_efficient_vector<RLSLPNonterm>& grammar, space_efficient_vector<Node>& firstNodes);
-  void initialize_countNodes(const space_efficient_vector<RLSLPNonterm> & grammar, space_efficient_vector<c_size_t>& countNodes);
-  void initialize_CountQueryStructure();
-  c_size_t queryCount(c_size_t symbol, c_size_t m);
-  space_efficient_vector<Node> enumerateNodes(c_size_t symbol);
   space_efficient_vector<c_size_t> getAnchors(c_size_t index, c_size_t length);
-  void getPotentialHooks(c_size_t node, c_size_t left, c_size_t right, c_size_t leftY, c_size_t rightY, c_size_t length, space_efficient_vector<Node>& symbols);
   c_size_t getSymbol(c_size_t pos);
   char getCharacter(c_size_t pos);
   c_size_t lce(c_size_t i, c_size_t j);
@@ -89,6 +81,7 @@ private:
   Node Right(Node& x, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm> &grammar);
   c_size_t lext(Node& x, const space_efficient_vector<RLSLPNonterm> &grammar);
   c_size_t rext(Node& x, const space_efficient_vector<RLSLPNonterm> &grammar);
+  void pushToStack(Node& x, stack<Node>& ancestors);
   Node getPosition(c_size_t node, c_size_t par, c_size_t idxInPar, c_size_t left, c_size_t right, c_size_t pos, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar);
   space_efficient_vector<packed_pair<c_size_t, c_size_t>> getPoppedSequence(c_size_t left, c_size_t right, const space_efficient_vector<RLSLPNonterm>& grammar);
 };

@@ -1,17 +1,20 @@
 
 using namespace std;
 #include <utils/space_efficient_vector.hpp>
+#include <utils/space_efficient_vector_2D.hpp>
+#include <BitVector.hpp>
 #include <typedefs.hpp>
 
 class MacroMicroTree{
 public:
-    space_efficient_vector<space_efficient_vector<c_size_t>> g, ladders, jumpPointers, dfsPath;
+    space_efficient_vector_2D<c_size_t> g, ladders, jumpPointers, dfsPath;
     space_efficient_vector<c_size_t> par, depths, height, jumpNodes, ladderIdx, ladderPos, dfsOrd, dfsPos, shapes, bct;
-    space_efficient_vector<c_size_t> levelMask;
+    BitVector levelMask;
+    //TODO: Add flattened 3D vector class
     space_efficient_vector<space_efficient_vector<space_efficient_vector<c_size_t>>> shapeTables;
     c_size_t n, micro_threshold;
     MacroMicroTree(){}
-    MacroMicroTree(c_size_t n, space_efficient_vector<space_efficient_vector<c_size_t>>& graph);
+    MacroMicroTree(c_size_t n, space_efficient_vector_2D<c_size_t>& graph);
     c_size_t level_ancestor(c_size_t node, c_size_t depth);
     MacroMicroTree(MacroMicroTree&&) = default;
     MacroMicroTree& operator=(MacroMicroTree&&) = default;

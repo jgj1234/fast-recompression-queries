@@ -15,7 +15,10 @@ Node::Node(
   const c_size_t& r) : 
   var(var),
   l(l),
-  r(r) {
+  r(r),
+  parent(-1),
+  indexInParent(-1),
+  level(0) {
 
 }
 
@@ -29,7 +32,8 @@ Node::Node(
   l(l),
   r(r),
   parent(parent),
-  indexInParent(indexInParent) {
+  indexInParent(indexInParent),
+  level(0) {
 
 }
 RLSLPNonterm::RLSLPNonterm(
@@ -136,11 +140,6 @@ bool RecompressionRLSLP::read_from_file(const string& filename) {
     computeExplen();
     return true;
 }
-void RecompressionRLSLP::init(c_size_t sz){
-  firstNodes.resize(sz, Node(-1, -1, -1));  
-  countNodes.resize(sz);
-  countQueryStructure.resize(sz);
-}
 c_size_t RecompressionRLSLP::computeExplen(const c_size_t i) {
     space_efficient_vector<RLSLPNonterm>& rlslp_nonterm_vec = nonterm;
     // Check if already computed
@@ -223,26 +222,44 @@ void RecompressionRLSLP::initialize_nodes(
 }
 void RecompressionRLSLP::constructTrees(){
   c_size_t n = nonterm.size();
-  space_efficient_vector<space_efficient_vector<c_size_t>> leftg(n), rightg(n);
-  space_efficient_vector<c_size_t> lmask(n), rmask(n);
+  c_size_t totRounds = nonterm[n - 1].level;
+  space_efficient_vector<c_size_t> leftBuckets(n), rightBuckets(n);
+  BitVector lmask(n, totRounds + 2), rmask(n, totRounds + 2);
   for (c_size_t i = 0; i < n; i++){
     const RLSLPNonterm& nt = nonterm[i];
     if (nt.type == '1'){
-      leftg[nt.first].push_back(i);
-      lmask[i] = lmask[nt.first] | (c_size_t(1) << nt.level);
-      rightg[nt.second].push_back(i);
-      rmask[i] = rmask[nt.second] | (c_size_t(1) << nt.level);
+      leftBuckets[nt.first]++;
+      lmask.setEntry(nt.first, i);
+      lmask.setBit(i, nt.level);
+      rightBuckets[nt.second]++;
+      rmask.setEntry(nt.second, i);
+      rmask.setBit(i, nt.level);
     }
     else if (nt.type == '2'){
-      leftg[nt.first].push_back(i);
-      lmask[i] = lmask[nt.first] | (c_size_t(1) << nt.level);
-      rightg[nt.first].push_back(i);
-      rmask[i] = rmask[nt.first] | (c_size_t(1) << nt.level);
+      leftBuckets[nt.first]++;
+      lmask.setEntry(nt.first, i);
+      lmask.setBit(i, nt.level);
+      rightBuckets[nt.first]++;
+      rmask.setEntry(nt.first, i);
+      rmask.setBit(i, nt.level);
     }
     else{
       //terminals which are introduced at level 0
-      lmask[i] = 1;
-      rmask[i] = 1;
+      lmask.setBit(i, 0);
+      rmask.setBit(i, 0);
+    }
+  }
+  space_efficient_vector_2D<c_size_t> leftg(leftBuckets), rightg(rightBuckets);
+  space_efficient_vector<c_size_t> leftIndex(n), rightIndex(n);
+  for (c_size_t i = 0; i < n; i++){
+    const RLSLPNonterm& nt = nonterm[i];
+    if (nt.type == '1'){
+      leftg.push_back(nt.first, i, leftIndex);
+      rightg.push_back(nt.second, i, rightIndex);
+    }
+    else if (nt.type == '2'){
+      leftg.push_back(nt.first, i, leftIndex);
+      rightg.push_back(nt.first, i, rightIndex);
     }
   }
   leftMT = MacroMicroTree(n, leftg);
@@ -280,71 +297,24 @@ void RecompressionRLSLP::initialize_firstNodes(
       initialize_firstNodes(nt.first, left, left + child_explen - 1, grammar, firstNodes);
     }
 }
-void RecompressionRLSLP::initialize_countNodes(
-  const space_efficient_vector<RLSLPNonterm>& grammar, 
-  space_efficient_vector<c_size_t>& countNodes
-){
-    c_size_t num_nodes = countNodes.size();
-    countNodes.back() = 1; // start rule
-    for (c_size_t i = num_nodes - 1; i >= 0; i--){
-      const RLSLPNonterm& nt = grammar[i];
-      if (nt.type == '1'){
-        countNodes[nt.first] += countNodes[i];
-        countNodes[nt.second] += countNodes[i];
-      }
-      else if (nt.type == '2'){
-        countNodes[nt.first] += nt.second * countNodes[i];
-      }
-    }
-}
-void RecompressionRLSLP::initialize_CountQueryStructure(){
-  for (c_size_t i = 0; i < nonterm.size(); i++){
-    countQueryStructure[i].resize(rhsExpList[i].size());
-    c_size_t suffixK = 0, suffixSum = 0;
-    if (countQueryStructure[i].size() == 0) continue;
-    for (c_size_t j = countQueryStructure[i].size() - 1; j >= 0; j--){
-      countQueryStructure[i][j] = packed_pair(suffixK, suffixSum);
-      suffixK += rhsExpList[i][j].first * countNodes[rhsExpList[i][j].second];
-      suffixSum += countNodes[rhsExpList[i][j].second];
-    }
-  }
-}
 void RecompressionRLSLP::initStructures(){
     c_size_t nonterm_num = nonterm.size();
-    pCompMask.resize(nonterm_num);
-    bCompMask.resize(nonterm_num);
-    rhsNodeList.resize(nonterm_num);
-    rhsExpList.resize(nonterm_num);
+    c_size_t totRounds = nonterm[nonterm_num - 1].level;
+    pCompMask = BitVector(nonterm_num, totRounds + 2);
+    bCompMask = BitVector(nonterm_num, totRounds + 2);
     for (c_size_t i = 0; i < nonterm_num; i++){
       const RLSLPNonterm& nt = nonterm[i];
-      rhsExpList[i].push_back(packed_pair(c_size_t(1), c_size_t(0)));
-
       if (nt.type == '1'){
-        rhsNodeList[nt.first].push_back(i);
-        rhsNodeList[nt.second].push_back(i);
         c_size_t lev = nt.level;
-        pCompMask[nt.first] |= c_size_t(1) << ((lev - 1) / 2);
+        pCompMask.setBit(nt.first, (lev - 1) / 2);
       }
       else if (nt.type == '2'){
-        rhsNodeList[nt.first].push_back(i);
-        rhsExpList[nt.first].push_back(packed_pair(nt.second, i));
         c_size_t lev = nt.level;
-        bCompMask[nt.first] |= c_size_t(1) << ((lev - 1) / 2);
+        bCompMask.setBit(nt.first, (lev - 1) / 2);
       }
     }
-    for (c_size_t i = 0; i < nonterm_num; i++){
-      rhsExpList[i].sort();
-    }
-    initialize_firstNodes(nonterm.size() - 1, 0, nonterm.back().explen - 1, nonterm, firstNodes);
-    initialize_countNodes(nonterm, countNodes);
-    initialize_CountQueryStructure();
-}
-c_size_t RecompressionRLSLP::queryCount(c_size_t symbol, c_size_t m){
-  packed_pair qpair(m + 1, c_size_t(1));
-  c_size_t idx = rhsExpList[symbol].lower_bound(qpair);
-  if (idx == 0) return 0;
-  --idx;
-  return countQueryStructure[symbol][idx].first - m * countQueryStructure[symbol][idx].second;
+    firstNodes.resize(nonterm_num, Node(-1, -1, -1));
+    initialize_firstNodes(nonterm_num - 1, 0, nonterm.back().explen - 1, nonterm, firstNodes);
 }
 Node RecompressionRLSLP::getLeftMostChild(
   Node v, const space_efficient_vector<RLSLPNonterm>& grammar) {
@@ -504,70 +474,7 @@ c_size_t RecompressionRLSLP::lce(c_size_t i, c_size_t j) {
       nonterm, v2);
     return LCE(v1, v2, i, v1_ancestors, v2_ancestors, nonterm);
 }
-void RecompressionRLSLP::getPotentialHooks(c_size_t node, c_size_t left, c_size_t right, c_size_t leftY, c_size_t rightY, c_size_t length, space_efficient_vector<Node>& symbols){
-  if (min(rightY, right) - max(leftY, left) + 1 < length) return;
-  const RLSLPNonterm& nt = nonterm[node];
-  symbols.push_back(Node(node, left, right));
-  if (nt.type == '0') return;
-  c_size_t neededPos = leftY + length - 1;
-  c_size_t leftLength = nonterm[nt.first].explen;
-  if (nt.type == '1'){
-    if (left + leftLength - 1 >= neededPos){
-      getPotentialHooks(nt.first, left, left + leftLength - 1, leftY, rightY, length, symbols);
-    }
-    else{
-      getPotentialHooks(nt.second, left + leftLength, right, leftY, rightY, length, symbols);
-    }
-  }
-  else if (nt.type == '2'){
-    c_size_t skipPos = left + leftLength * ((neededPos - left) / leftLength);
-    getPotentialHooks(nt.first, skipPos, skipPos + leftLength - 1, leftY, rightY, length, symbols);
-  }
-}
 
-space_efficient_vector<Node> RecompressionRLSLP::enumerateNodes(c_size_t symbol){
-  space_efficient_vector<Node> nodeList;
-  stack<packed_pair<c_size_t, Node>> reverse_path;
-  reverse_path.push(packed_pair(symbol, Node(symbol, 0, nonterm[symbol].explen)));
-  while (!reverse_path.empty()){
-    c_size_t currSymbol = reverse_path.top().first;
-    Node curr_node = reverse_path.top().second;
-    reverse_path.pop();
-    if (rhsNodeList[currSymbol].empty()){
-      nodeList.push_back(curr_node);
-    }
-    else{
-      for (c_size_t i = 0; i < rhsNodeList[currSymbol].size(); i++){
-        c_size_t parIdx = rhsNodeList[currSymbol][i];
-        const RLSLPNonterm& parNode = nonterm[parIdx];
-        if (parNode.type == '1'){
-          Node nxt_node = Node();
-          nxt_node.var = symbol;
-          if (parNode.first == currSymbol){
-            nxt_node.l = curr_node.l;
-            nxt_node.r = curr_node.r;
-          }
-          else{
-            const RLSLPNonterm& sibling = nonterm[nonterm[parIdx].first];
-            nxt_node.l = curr_node.l + sibling.explen;
-            nxt_node.r = curr_node.r + sibling.explen;
-          }
-          reverse_path.push(packed_pair(parIdx, nxt_node));
-        }
-        else{
-          c_size_t k = parNode.second;
-          const RLSLPNonterm& symbolPos = nonterm[currSymbol];
-          for (c_size_t i = 0; i < k; i++){
-            Node nxt_node = Node(symbol, curr_node.l + i * symbolPos.explen, curr_node.r + i * symbolPos.explen);
-            reverse_path.push(packed_pair(parIdx, nxt_node));
-          }
-        }
-
-      }
-    }
-  }
-  return nodeList;
-}
 Node RecompressionRLSLP::getPosition(c_size_t node, c_size_t par, c_size_t idxInPar, c_size_t left, c_size_t right, c_size_t pos, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar){
   Node curr_node(node, left, right, par, idxInPar); 
   curr_node.level = grammar[node].level;
@@ -592,15 +499,12 @@ Node RecompressionRLSLP::getPosition(c_size_t node, c_size_t par, c_size_t idxIn
   return getPosition(leftNode, node, skipTimes == nt.second - 1 ? -1 : skipTimes, skip, skip + leftLength - 1, pos, ancestors, grammar);
 }
 packed_pair<c_size_t, c_size_t> RecompressionRLSLP::First(c_size_t var, c_size_t level){
-  c_size_t newMask = leftMT.levelMask[var] & ((c_size_t(1) << (level + 1)) - 1);
-  c_size_t k = __builtin_popcountll(leftMT.levelMask[var] ^ newMask);
-  return packed_pair(leftMT.level_ancestor(var, leftMT.depths[var] - k), leftMT.level_ancestor(var, leftMT.depths[var] - k + 1));
+  c_size_t k = leftMT.levelMask.getSuffCount(var, level + 1);
+  return packed_pair<c_size_t, c_size_t>(leftMT.level_ancestor(var, leftMT.depths[var] - k), leftMT.level_ancestor(var, leftMT.depths[var] - k + 1));
 }
 packed_pair<c_size_t, c_size_t> RecompressionRLSLP::Last(c_size_t var, c_size_t level){
-
-  c_size_t newMask = rightMT.levelMask[var] & ((c_size_t(1) << (level + 1)) - 1); 
-  c_size_t k = __builtin_popcountll(rightMT.levelMask[var] ^ newMask);
-  return packed_pair(rightMT.level_ancestor(var, rightMT.depths[var] - k), rightMT.level_ancestor(var, rightMT.depths[var] - k + 1));
+  c_size_t k = rightMT.levelMask.getSuffCount(var, level + 1);
+  return packed_pair<c_size_t, c_size_t>(rightMT.level_ancestor(var, rightMT.depths[var] - k), rightMT.level_ancestor(var, rightMT.depths[var] - k + 1));
 }
 bool RecompressionRLSLP::sameParent(Node& x, Node& y, const space_efficient_vector<RLSLPNonterm>& grammar){
   if (grammar[x.parent].level - 1 > x.level|| grammar[y.parent].level - 1 > y.level) return false;
@@ -635,27 +539,12 @@ c_size_t RecompressionRLSLP::getSymbol(c_size_t node, c_size_t left, c_size_t ri
 c_size_t RecompressionRLSLP::getSymbol(c_size_t pos){
   return getSymbol(nonterm.size() - 1, 0, nonterm.back().explen - 1, pos, nonterm);
 }
-char RecompressionRLSLP::getCharacter(c_size_t node, c_size_t left, c_size_t right, c_size_t pos, const space_efficient_vector<RLSLPNonterm>& grammar){
-  const RLSLPNonterm& nt = grammar[node];
-  if (left == right){
-    return static_cast<char> (nt.first); 
-  }
-  c_size_t leftNode = nt.first;
-  c_size_t leftLength = grammar[leftNode].explen;
-  if (nt.type == '1'){
-    if (left + leftLength > pos){
-      return getCharacter(nt.first, left, left + leftLength - 1, pos, grammar);
-    }
-    else{
-      return getCharacter(nt.second, left + leftLength, right, pos, grammar);
-    }
-  }
-  c_size_t skipTimes = (pos - left) / leftLength;
-  c_size_t skip = left + leftLength * ((pos - left) / leftLength);
-  return getCharacter(leftNode, skip, skip + leftLength - 1, pos, grammar);
-}
 char RecompressionRLSLP::getCharacter(c_size_t pos){
-  return getCharacter(nonterm.size() - 1, 0, nonterm.back().explen - 1, pos, nonterm);
+  return static_cast<char> (nonterm[getSymbol(pos)].first);
+}
+void RecompressionRLSLP::pushToStack(Node& x, stack<Node>& ancestors){
+    if (!ancestors.empty() && x.indexInParent <= 0 && x.indexInParent == ancestors.top().indexInParent) ancestors.pop();
+    ancestors.push(x);
 }
 void RecompressionRLSLP::updateStack(Node& node, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar){
   Node parent;
@@ -688,15 +577,14 @@ void RecompressionRLSLP::updateStack(Node& node, stack<Node>& ancestors, const s
   parent.indexInParent = node.indexInParent;
   c_size_t parLevel = grammar[parent.var].level;
   if (parent.indexInParent == 0){
-    c_size_t k = __builtin_popcountll(leftMT.levelMask[ancestors.top().var] ^ leftMT.levelMask[parent.var]);
+    c_size_t k = leftMT.levelMask.getSuffCount(ancestors.top().var, parent.level + 1);
     parent.parent = leftMT.level_ancestor(ancestors.top().var, leftMT.depths[ancestors.top().var] - (k - 1));
   }
   else{
-    c_size_t k = __builtin_popcountll(rightMT.levelMask[ancestors.top().var] ^ rightMT.levelMask[parent.var]);
+    c_size_t k = rightMT.levelMask.getSuffCount(ancestors.top().var, parent.level + 1);
     parent.parent = rightMT.level_ancestor(ancestors.top().var, rightMT.depths[ancestors.top().var] - (k - 1));
   }
-  if (!ancestors.empty() && parent.indexInParent <= 0 && parent.indexInParent == ancestors.top().indexInParent) ancestors.pop();
-  ancestors.push(parent);
+  pushToStack(parent, ancestors);
 }
 Node RecompressionRLSLP::constructParent(Node& node, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar){
   if (node.level < grammar[node.parent].level - 1){
@@ -739,10 +627,7 @@ Node RecompressionRLSLP::Left(Node& x, stack<Node>& ancestors, const space_effic
       c_size_t nxtIdx = (x.indexInParent == -1 ? k - 1 : x.indexInParent - 1);
       Node res_node(childVar, x.l - grammar[childVar].explen, x.l - 1, x.parent, nxtIdx);
       res_node.level = lev;
-      if (!ancestors.empty() && res_node.indexInParent <= 0 && res_node.indexInParent == ancestors.top().indexInParent) {
-        ancestors.pop();
-      }
-      ancestors.push(res_node);
+      pushToStack(res_node, ancestors);
       return res_node;
     }
     else{
@@ -750,15 +635,11 @@ Node RecompressionRLSLP::Left(Node& x, stack<Node>& ancestors, const space_effic
       c_size_t nxtIdx = (x.indexInParent == -1 ? k - 1 : x.indexInParent - 1);
       Node first_child(childVar, x.l - grammar[childVar].explen, x.l - 1, x.parent, nxtIdx);
       first_child.level = grammar[childVar].level;
-      if (!ancestors.empty() && first_child.indexInParent <= 0 && first_child.indexInParent == ancestors.top().indexInParent) ancestors.pop();
-      ancestors.push(first_child);
+      pushToStack(first_child, ancestors);
       auto [nxtVar, nxtPar] = Last(childVar, lev);
       Node res_node(nxtVar, x.l - grammar[nxtVar].explen, x.l - 1, nxtPar, -1);
       res_node.level = lev;
-      if (!ancestors.empty() && res_node.indexInParent <= 0 && res_node.indexInParent == ancestors.top().indexInParent) {
-        ancestors.pop();
-      }
-      ancestors.push(res_node);
+      pushToStack(res_node, ancestors);
       return res_node;
     }
   }
@@ -785,9 +666,8 @@ Node RecompressionRLSLP::Left(Node& x, stack<Node>& ancestors, const space_effic
       lcaChild.r -= length;
     }
   }
-  if (!ancestors.empty() && lcaChild.indexInParent <= 0 && lcaChild.indexInParent == ancestors.top().indexInParent) ancestors.pop();
   lcaChild.level = grammar[lcaChild.var].level;
-  ancestors.push(lcaChild);
+  pushToStack(lcaChild, ancestors);
   if (lcaChild.level <= x.level){
     lcaChild.level = x.level;
     return lcaChild;
@@ -795,10 +675,7 @@ Node RecompressionRLSLP::Left(Node& x, stack<Node>& ancestors, const space_effic
   auto [nodeIdx, par] = Last(lcaChild.var, x.level);
   Node res_node(nodeIdx, x.l - grammar[nodeIdx].explen, x.l - 1, par, -1);
   res_node.level = x.level;
-  if (!ancestors.empty() && res_node.indexInParent <= 0 && res_node.indexInParent == ancestors.top().indexInParent) {
-    ancestors.pop();
-  }
-  ancestors.push(res_node);
+  pushToStack(res_node, ancestors);
   return res_node;
 
 }
@@ -814,27 +691,18 @@ Node RecompressionRLSLP::Right(Node& x, stack<Node>& ancestors, const space_effi
       c_size_t k = parNT.type == '1' ? 1: parNT.second - 1;
       Node res_node(childVar, x.r + 1, x.r + grammar[childVar].explen, x.parent, x.indexInParent == k - 1 ? -1 : x.indexInParent + 1);
       res_node.level = x.level;
-      if (!ancestors.empty() && res_node.indexInParent <= 0 && res_node.indexInParent == ancestors.top().indexInParent) {
-        ancestors.pop();
-      }
-      ancestors.push(res_node);
+      pushToStack(res_node, ancestors);
       return res_node;
     }
     else{
       c_size_t k = parNT.type == '1' ? 1: parNT.second - 1;
       Node first_child(childVar, x.r + 1, x.r + grammar[childVar].explen, x.parent, x.indexInParent == k - 1 ? -1 : x.indexInParent + 1);
       first_child.level = grammar[childVar].level;
-      if (!ancestors.empty() && first_child.indexInParent <= 0 && first_child.indexInParent == ancestors.top().indexInParent){
-        ancestors.pop();
-      }
-      ancestors.push(first_child);
+      pushToStack(first_child, ancestors);
       auto [nxtVar, nxtPar] = First(childVar, lev);
       Node res_node(nxtVar, x.r + 1, x.r + grammar[nxtVar].explen, nxtPar, 0);
       res_node.level = lev;
-      if (!ancestors.empty() && res_node.indexInParent <= 0 && res_node.indexInParent == ancestors.top().indexInParent) {
-        ancestors.pop();
-      }
-      ancestors.push(res_node);
+      pushToStack(res_node, ancestors);
       return res_node;
     }
   }
@@ -854,10 +722,8 @@ Node RecompressionRLSLP::Right(Node& x, stack<Node>& ancestors, const space_effi
       lcaChild.l = lcaChild.r + 1;
       lcaChild.r = lcaChild.r + grammar[lcaChild.var].explen;
   }
-  
-  if (!ancestors.empty() && lcaChild.indexInParent <= 0 && lcaChild.indexInParent == ancestors.top().indexInParent) ancestors.pop();
   lcaChild.level = grammar[lcaChild.var].level;
-  ancestors.push(lcaChild);
+  pushToStack(lcaChild, ancestors);
   if (lcaChild.level <= x.level){
     lcaChild.level = x.level;
     return lcaChild;
@@ -865,10 +731,7 @@ Node RecompressionRLSLP::Right(Node& x, stack<Node>& ancestors, const space_effi
   auto [nodeIdx, par] = First(lcaChild.var, x.level);
   Node res_node(nodeIdx, x.r + 1, x.r + grammar[nodeIdx].explen, par, 0);
   res_node.level = x.level;
-  if (!ancestors.empty() && res_node.indexInParent <= 0 && res_node.indexInParent == ancestors.top().indexInParent) {
-    ancestors.pop();
-  }
-  ancestors.push(res_node);
+  pushToStack(res_node, ancestors);
   return res_node;
 }
 space_efficient_vector<packed_pair<c_size_t, c_size_t>> RecompressionRLSLP::getPoppedSequence(c_size_t left, c_size_t right, const space_efficient_vector<RLSLPNonterm>& grammar){
@@ -880,29 +743,29 @@ space_efficient_vector<packed_pair<c_size_t, c_size_t>> RecompressionRLSLP::getP
     for (c_size_t j = 0; j <= height && P.r < Q.l; j++){
       if (sameParent(P, Q, grammar)){
         if (grammar[Q.parent].type == '1'){
-          S.push_back(packed_pair(P.var, c_size_t(1)));
-          T.push_back(packed_pair(Q.var, c_size_t(1)));
+          S.push_back(packed_pair<c_size_t, c_size_t>(P.var, c_size_t(1)));
+          T.push_back(packed_pair<c_size_t, c_size_t>(Q.var, c_size_t(1)));
         }
         else{
-          S.push_back(packed_pair(P.var, (Q.indexInParent == -1 ? grammar[Q.parent].second - 1 : Q.indexInParent) - P.indexInParent + 1));
+          S.push_back(packed_pair<c_size_t, c_size_t>(P.var, (Q.indexInParent == -1 ? grammar[Q.parent].second - 1 : Q.indexInParent) - P.indexInParent + 1));
         }
         break;
       }
-      if (((j & 1) && (((pCompMask[P.var] & (c_size_t(1) << (j / 2))) == 0))) || 
-          (((j & 1) == 0) && bCompMask[P.var] & (c_size_t(1) << (j / 2)))){
+      if (((j & 1) && (!pCompMask.getBit(P.var, j / 2))) || 
+          (((j & 1) == 0) && bCompMask.getBit(P.var, j / 2))){
 
             c_size_t rightEq = (j & 1 ? 0 : rext(P, grammar)) + 1;
-            S.push_back(packed_pair(P.var, rightEq));
+            S.push_back(packed_pair<c_size_t, c_size_t>(P.var, rightEq));
             Node pPar = constructParent(P, lstack, grammar);
             P = Right(pPar, lstack, grammar);
       }
       else{
           P = constructParent(P, lstack, grammar);
       }
-      if (((j & 1) && ((pCompMask[Q.var] & (c_size_t(1) << (j / 2))))) || 
-            (((j & 1) == 0) && bCompMask[Q.var] & (c_size_t(1) << (j / 2)))){ //there's only one level where this variable can be involved in BComp, probably don't need BCompMask
+      if (((j & 1) && ((pCompMask.getBit(Q.var, j / 2)))) || 
+            (((j & 1) == 0) && bCompMask.getBit(Q.var, j / 2))){ //there's only one level where this variable can be involved in BComp, probably don't need BCompMask
               c_size_t leftEq = (j & 1 ? 0: lext(Q, grammar)) + 1;
-              T.push_back(packed_pair(Q.var, leftEq));
+              T.push_back(packed_pair<c_size_t, c_size_t>(Q.var, leftEq));
               Node qPar = constructParent(Q, rstack, grammar);
               Q = Left(qPar, rstack, grammar);
         }
@@ -911,7 +774,7 @@ space_efficient_vector<packed_pair<c_size_t, c_size_t>> RecompressionRLSLP::getP
         }
     }
     if (P.l == Q.l && P.r == Q.r){
-      S.push_back(packed_pair(P.var, c_size_t(1)));
+      S.push_back(packed_pair<c_size_t, c_size_t>(P.var, c_size_t(1)));
     }
     T.reverse();
     for (len_t j = 0; j < T.size(); j++) S.push_back(T[j]);

@@ -1,12 +1,11 @@
 #!/bin/bash
 
 print_usage() {
-    echo "Usage: ./run_rlslp.sh <input_file> <queries_file> <output_file> [block_size]"
+    echo "Usage: ./run_rlslp.sh <input_file> <queries_file> <output_file>"
     echo
     echo "<input_file>   : Path to the input text file passed to text_rlslp_script.sh"
     echo "<queries_file> : Path to the query file passed to recomp_query"
     echo "<output_file>  : Path to the output file passed to recomp_query"
-    echo "[block_size]   : Optional block size passed to text_rlslp_script.sh"
 }
 
 resolve_existing_path() {
@@ -29,7 +28,7 @@ resolve_output_path() {
     echo "$dir/$base"
 }
 
-if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+if [ "$#" -ne 3 ]; then
     print_usage
     exit 1
 fi
@@ -41,7 +40,6 @@ INPUT_FILE="$(resolve_existing_path "$1")"
 RLSLP_FILE="${INPUT_FILE}.rlslp"
 QUERY_FILE="$(resolve_existing_path "$2")"
 OUTPUT_FILE="$(resolve_output_path "$3")"
-BLOCK_SIZE="${4:-50}"
 
 if [ ! -f "$INPUT_FILE" ]; then
     echo "Input file not found: $INPUT_FILE"
@@ -65,7 +63,7 @@ fi
 
 (
     cd "$FAST_RECOMP_DIR"
-    bash ./text_rlslp_script.sh "$INPUT_FILE" "$BLOCK_SIZE" >/dev/null 2>&1
+    bash ./text_rlslp_script.sh "$INPUT_FILE" >/dev/null 2>&1
 )
 
 if [ ! -f "$RLSLP_FILE" ]; then

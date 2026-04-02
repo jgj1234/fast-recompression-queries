@@ -3,6 +3,8 @@
 #include "utils/space_efficient_vector.hpp"
 #include "utils/packed_pair.hpp"
 #include "recompression_definitions.hpp"
+#include <sdsl/int_vector.hpp>
+#include <sdsl/wt_int.hpp>
 using namespace std;
 /*
 class RangeQuery{
@@ -24,7 +26,9 @@ private:
 class RangeQuery{
     public:
         space_efficient_vector<Fragment> X, Y;
-        space_efficient_vector<c_size_t> weights, rankY;
+        space_efficient_vector<c_size_t> weights;
+        sdsl::int_vector<> rankY;
+        sdsl::wt_int<> reportWT;
         RangeQuery();
         RangeQuery(RecompressionRLSLP* rlslp, space_efficient_vector<Fragment>& X, space_efficient_vector<Fragment>& Y, space_efficient_vector<c_size_t>& weights);
         c_size_t rangeMinimum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2);

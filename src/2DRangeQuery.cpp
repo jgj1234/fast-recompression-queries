@@ -1,5 +1,8 @@
 #include "2DRangeQuery.hpp"
 #include "recompression_definitions.hpp"
+#include <sdsl/wt_int.hpp>
+#include <sdsl/int_vector.hpp>
+#include <sdsl/int_vector_buffer.hpp>
 /*
 RangeQuery::RangeQuery(){
     
@@ -140,35 +143,33 @@ struct FragmentComparator{
 RangeQuery::RangeQuery(
   RecompressionRLSLP* rlslp, space_efficient_vector<Fragment>& X, space_efficient_vector<Fragment>& Y, space_efficient_vector<c_size_t>& weights) :
   X(X), Y(Y), weights(weights) {
-    rankY.resize(Y.size());
-    space_efficient_vector<pair<Fragment, c_size_t>> arr(Y.size());
-    for (c_size_t i = 0; i < Y.size(); i++){
+    len_t n = Y.size();
+    rankY.resize(n);
+    space_efficient_vector<pair<Fragment, c_size_t>> arr(n);
+    for (c_size_t i = 0; i < n; i++){
         arr[i] = make_pair(Y[i], i);
     }
     FragmentComparator fc(rlslp);
     arr.sort(fc);
-    for (c_size_t i = 0; i < Y.size(); i++){
-        this->Y[i] = arr[i].first;
-        this->rankY[arr[i].second] = i;
-    }
+    for (c_size_t i = 0; i < n; i++) this->Y[i] = arr[i].first;
+    this->rankY = sdsl::int_vector<> (n);
+    for (c_size_t i = 0; i < n; i++) this->rankY[arr[i].second] = i;
+    string buffer_name = "temp_buffer";
+    sdsl::int_vector_buffer<64> buf(buffer_name, ios::out);
+    for (c_size_t i = 0; i < n; i++) buf.push_back(this->rankY[i]);
+    vector<int> w(n); // temporary until we clean up wt int code
+    for (int i = 0; i < n; i++) w[i] = weights[i];
+    this->reportWT = sdsl::wt_int<> (buf, n, w, true);
+    sdsl::remove(buffer_name);
 }
 space_efficient_vector<c_size_t> RangeQuery::rangeReport(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
-    space_efficient_vector<c_size_t> occs;
-    for (int i = x1; i <= x2; i++){
-        if (rankY[i] >= y1 && rankY[i] <= y2){
-            occs.push_back(weights[i]);
-        }
-    }
-    return occs;
+    space_efficient_vector<c_size_t> res;
+    vector<int> r = this->reportWT.range_search_2d(x1, x2, y1, y2);
+    for (int i = 0; i < r.size(); i++) res.push_back(r[i]);
+    return res;
 }
 c_size_t RangeQuery::rangeMinimum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
-    c_size_t mnOcc = numeric_limits<c_size_t>::max();
-    for (int i = x1; i <= x2; i++){
-        if (rankY[i] >= y1 && rankY[i] <= y2){
-            mnOcc = min(mnOcc, weights[i]);
-        }
-    }
-    return mnOcc;
+    return this->reportWT.range_minimum_2d(x1, x2, y1, y2);
 }
 c_size_t RangeQuery::rangeSum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
     c_size_t result = 0;

@@ -409,13 +409,8 @@ class space_efficient_vector {
     inline const value_type& front() const {
       return m_blocks[0][0];
     }
-
-    // TODO: Can add functionality to search in a range.
-    uint64_t lower_bound(value_type& search_element)
-    {
-      uint64_t low = 0;
-      uint64_t high = size() - 1;
-
+    uint64_t lower_bound(value_type& search_element, uint64_t low, uint64_t high){
+      uint64_t defaultVal = high + 1;
       while(high - low > 1) {
           uint64_t mid = low + (high - low)/2;
 
@@ -429,10 +424,13 @@ class space_efficient_vector {
 
       if(search_element <= (*this)[low]) return low;
       if(search_element <= (*this)[high]) return high;
-
-      return size();
+      return defaultVal;
     }
 
+    uint64_t lower_bound(value_type& search_element)
+    {
+      return lower_bound(search_element, 0, size() - 1);
+    }
     //=========================================================================
     // Return the reference to the last element.
     //=========================================================================
@@ -578,17 +576,16 @@ class space_efficient_vector {
       return (std::uint64_t)j;
     }
 
-    void sort(
-        const std::uint64_t p,
-        const std::uint64_t r) {
-      if (p < r) {
-        const std::uint64_t q = partition(p, r);
-        sort(p, q);
-        sort(q + 1, r);
-      }
-    }
-
   public:
+    void sort(
+          const std::uint64_t p,
+          const std::uint64_t r) {
+        if (p < r) {
+          const std::uint64_t q = partition(p, r);
+          sort(p, q);
+          sort(q + 1, r);
+        }
+      }
     template<typename Compare>
     void sort(Compare comp) {
 #if 1
