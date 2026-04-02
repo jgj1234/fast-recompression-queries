@@ -154,7 +154,7 @@ void test_string(string& s, c_size_t queryNum, string test_type, string query_pa
             }
         }
         if (fail){
-            cerr << "Failed on " << test_type << ": " << "Mismatch for query " << index << " " << type << " " << length << '\n';
+            cerr << "Failed on " << test_type << ": " << "Mismatch for query " << type << " " << index << " " << length << '\n';
             exit(1);
         }
     }
