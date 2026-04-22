@@ -1,8 +1,8 @@
 #include "ReportQueryComponent.hpp"
 ReportQueryComponent::ReportQueryComponent(const space_efficient_vector<RLSLPNonterm>& grammar){
-    initialize_rhsExpList(grammar);
+    initialize_rhsNodeList(grammar);
 }
-void ReportQueryComponent::initialize_rhsExpList(const space_efficient_vector<RLSLPNonterm>& grammar){
+void ReportQueryComponent::initialize_rhsNodeList(const space_efficient_vector<RLSLPNonterm>& grammar){
     c_size_t nonterm_num = grammar.size();
     space_efficient_vector<c_size_t> rhsNodeListBuckets(nonterm_num);
     for (c_size_t i = 0; i < nonterm_num; i++){
