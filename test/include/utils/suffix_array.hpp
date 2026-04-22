@@ -43,7 +43,6 @@ class SuffixArray {
         }
 
         c_size_t query(c_size_t l, c_size_t r, space_efficient_vector_2D<c_size_t>& rmq) {
-            //r-- for lcp rmq
             c_size_t lg = 63 - __builtin_clzll(r - l + 1);
             return min(rmq(l, lg), rmq(r - (c_size_t(1) << lg) + 1, lg));
         }
@@ -165,7 +164,6 @@ class SuffixArray {
             return -1;
         }
         c_size_t leftMostIPMQuery(c_size_t xl, c_size_t xr, c_size_t yl, c_size_t yr){
-            //could speed this up with wavelet tree on the suffix array
             c_size_t length = xr - xl + 1;
             for (c_size_t i = yl; i <= yr - length + 1; i++){
                 c_size_t l = lce(xl, i);

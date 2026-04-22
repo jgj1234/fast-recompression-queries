@@ -568,6 +568,9 @@ void RecompressionRLSLP::pushToStack(Node& x, stack<Node>& ancestors){
     if (!ancestors.empty() && x.indexInParent <= 0 && x.indexInParent == ancestors.top().indexInParent) ancestors.pop();
     ancestors.push(x);
 }
+// Given a node `node` covering [node.l, node.r] at recompression level `node.level` in the compressed parse tree
+// represented by `grammar`, with its compressed path to the root stored in `ancestors`, updates `ancestors` so that
+// it contains the path from the root down to `node`'s parent.
 void RecompressionRLSLP::updateStack(Node& node, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar){
   Node parent;
   if (ancestors.top().var == node.var){
@@ -636,6 +639,10 @@ c_size_t RecompressionRLSLP::lext(Node& x, const space_efficient_vector<RLSLPNon
     return x.indexInParent;
   }
 }
+// Given a node `x` covering [x.l, x.r] at recompression level `x.level` in the compressed
+// parse tree represented by `grammar`, with its compressed path to the root stored in `ancestors`, returns the nearest
+// node at the same level immediately to the left of `x`
+// and updates `ancestors` to reflect the path to the returned node.
 Node RecompressionRLSLP::Left(Node& x, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm> &grammar){
   if (x.indexInParent != 0){
     const RLSLPNonterm& parNT = grammar[x.parent];
@@ -700,6 +707,10 @@ Node RecompressionRLSLP::Left(Node& x, stack<Node>& ancestors, const space_effic
   pushToStack(res_node, ancestors);
   return res_node;
 }
+// Given a node `x` covering [x.l, x.r] at recompression level `x.level` in the compressed
+// parse tree represented by `grammar`, with its compressed path to the root stored in `ancestors`, returns the nearest
+// node at the same level immediately to the right of `x`
+// and updates `ancestors` to reflect the path to the returned node.
 Node RecompressionRLSLP::Right(Node& x, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm> &grammar){
   if (x.indexInParent != -1){
     const RLSLPNonterm& parNT = grammar[x.parent];
