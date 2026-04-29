@@ -22,7 +22,9 @@ struct FragmentComparator{
     }
 };
 RangeQuery::RangeQuery(
-  RecompressionRLSLP* rlslp, space_efficient_vector<Fragment>& X, space_efficient_vector<Fragment>& Y, space_efficient_vector<c_size_t>& weights) :
+  RecompressionRLSLP* rlslp, space_efficient_vector<Fragment>& X, space_efficient_vector<Fragment>& Y, space_efficient_vector<c_size_t>& weights, 
+  c_size_t queryType
+) :
   X(X), Y(Y), weights(weights) {
     len_t n = Y.size();
     rankY.resize(n);
@@ -38,26 +40,20 @@ RangeQuery::RangeQuery(
     string buffer_name = "temp_buffer";
     sdsl::int_vector_buffer<64> buf(buffer_name, ios::out);
     for (c_size_t i = 0; i < n; i++) buf.push_back(this->rankY[i]);
-    vector<int> w(n); // temporary until we clean up wt int code
+    vector<c_size_t> w(n); // temporary until we clean up wt int code
     for (int i = 0; i < n; i++) w[i] = weights[i];
-    this->reportWT = sdsl::wt_int<> (buf, n, w, true);
+    this->wavelet_tree = sdsl::wt_int<> (buf, n, w, queryType == 1, queryType > 0);
     sdsl::remove(buffer_name);
 }
 space_efficient_vector<c_size_t> RangeQuery::rangeReport(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
     space_efficient_vector<c_size_t> res;
-    vector<int> r = this->reportWT.range_search_2d(x1, x2, y1, y2);
+    vector<int> r = this->wavelet_tree.range_search_2d(x1, x2, y1, y2);
     for (int i = 0; i < r.size(); i++) res.push_back(r[i]);
     return res;
 }
 c_size_t RangeQuery::rangeMinimum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
-    return this->reportWT.range_minimum_2d(x1, x2, y1, y2);
+    return this->wavelet_tree.range_minimum_2d(x1, x2, y1, y2);
 }
 c_size_t RangeQuery::rangeSum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
-    c_size_t result = 0;
-    for (int i = x1; i <= x2; i++){
-        if (rankY[i] >= y1 && rankY[i] <= y2){
-            result += weights[i];
-        }
-    }
-    return result;
+    return this->wavelet_tree.range_sum_2d(x1, x2, y1, y2);
 }

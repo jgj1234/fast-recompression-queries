@@ -188,6 +188,7 @@ void test_string(string& s, c_size_t queryNum, string test_type, bool test_count
             rlslp_occs.sort();
             if (rlslp_occs.size() != occs.size()){
                 fail = true;
+                cerr << "Report Occurrence size Mismatch" << '\n';
             }
             else{
                 for (c_size_t i = 0; i < rlslp_occs.size(); i++){
@@ -202,6 +203,7 @@ void test_string(string& s, c_size_t queryNum, string test_type, bool test_count
             c_size_t rlslpLeftMost;
             output_file >> rlslpLeftMost;
             if (rlslpLeftMost != leftMostOcc){
+                cerr << "Expected " << leftMostOcc << " Got " << rlslpLeftMost << '\n';
                 fail = true;
             }
         }
@@ -210,6 +212,7 @@ void test_string(string& s, c_size_t queryNum, string test_type, bool test_count
             c_size_t rlslpCount;
             output_file >> rlslpCount;
             if (rlslpCount != countOccs){
+                cerr << "Expected " << countOccs << " Got " << rlslpCount << '\n';
                 fail = true;
             }
         }

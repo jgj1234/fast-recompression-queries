@@ -18,6 +18,7 @@
 recomp
 recomp_query
 test
+test/input*
 !test/
 env
 genqueries

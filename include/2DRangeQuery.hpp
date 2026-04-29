@@ -28,9 +28,9 @@ class RangeQuery{
         space_efficient_vector<Fragment> X, Y;
         space_efficient_vector<c_size_t> weights;
         sdsl::int_vector<> rankY;
-        sdsl::wt_int<> reportWT;
+        sdsl::wt_int<> wavelet_tree;
         RangeQuery();
-        RangeQuery(RecompressionRLSLP* rlslp, space_efficient_vector<Fragment>& X, space_efficient_vector<Fragment>& Y, space_efficient_vector<c_size_t>& weights);
+        RangeQuery(RecompressionRLSLP* rlslp, space_efficient_vector<Fragment>& X, space_efficient_vector<Fragment>& Y, space_efficient_vector<c_size_t>& weights, c_size_t queryType);
         c_size_t rangeMinimum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2);
         space_efficient_vector<c_size_t> rangeReport(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2);
         c_size_t rangeSum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2);

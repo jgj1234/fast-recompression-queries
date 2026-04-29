@@ -360,9 +360,9 @@ int main(int argc, char *argv[]){
         countY[i] = countArr[i].rightFragment;
         countWeights[i] = countArr[i].countWeight;
     }
-    RangeQuery rectangleQuery(recomp_rlslp.get(), X, Y, nontermIDs);
-    RangeQuery minQuery(recomp_rlslp.get(), X, Y, minWeights);
-    RangeQuery countQuery(recomp_rlslp.get(), countX, countY, countWeights);
+    RangeQuery rectangleQuery(recomp_rlslp.get(), X, Y, nontermIDs, 0);
+    RangeQuery minQuery(recomp_rlslp.get(), X, Y, minWeights, 1);
+    RangeQuery countQuery(recomp_rlslp.get(), countX, countY, countWeights, 2);
     c_size_t sz = recomp_rlslp->nonterm.back().explen;
     for (c_size_t i = 0; i < rectangleQuery.X.size(); i++){
         rectangleQuery.X[i].index = sz - 1 - (rectangleQuery.X[i].index + rectangleQuery.X[i].length - 1);
