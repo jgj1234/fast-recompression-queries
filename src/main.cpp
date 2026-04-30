@@ -294,7 +294,7 @@ int main(int argc, char *argv[]){
     reverse_rlslp->nonterm.resize(nonterms, RLSLPNonterm('0', -1, -1));
     recomp_rlslp->reverseRLSLP(nonterms - 1, reverse_rlslp.get());
     reverse_rlslp->initStructures();
-    recomp_rlslp->constructTrees();
+    //recomp_rlslp->constructTrees();
     CountQueryComponent countComp(recomp_rlslp->nonterm);
     ReportQueryComponent reportComp(recomp_rlslp->nonterm);
     space_efficient_vector<NonTerminalInfo> arr;

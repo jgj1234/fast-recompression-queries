@@ -54,7 +54,7 @@ public:
   bool read_from_file(const string &filename);
   void initStructures();
   void computeExplen();
-  void constructTrees();
+  //void constructTrees();
   void reverseRLSLP(c_size_t node, RecompressionRLSLP* rev_rlslp);
   void initialize_firstNodes(c_size_t node, c_size_t left, c_size_t right, const space_efficient_vector<RLSLPNonterm>& grammar, space_efficient_vector<Node>& firstNodes);
   space_efficient_vector<c_size_t> getAnchors(c_size_t index, c_size_t length);
@@ -65,8 +65,8 @@ public:
 private:
   void initialize_nodes(c_size_t node, const c_size_t& i, c_size_t left, c_size_t right, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar, Node& v);
   bool sameParent(Node& x, Node& y, const space_efficient_vector<RLSLPNonterm>& grammar);
-  packed_pair<c_size_t, c_size_t> First(c_size_t var, c_size_t level);
-  packed_pair<c_size_t, c_size_t> Last(c_size_t var, c_size_t level);
+  //packed_pair<c_size_t, c_size_t> First(c_size_t var, c_size_t level);
+  //packed_pair<c_size_t, c_size_t> Last(c_size_t var, c_size_t level);
   c_size_t getSymbol(c_size_t node, c_size_t left, c_size_t right, c_size_t pos, const space_efficient_vector<RLSLPNonterm>& grammar);
   char getCharacter(c_size_t node, c_size_t left, c_size_t right, c_size_t pos, const space_efficient_vector<RLSLPNonterm>& grammar);
   Node getLeftMostChild(Node v, const space_efficient_vector<RLSLPNonterm> & grammar);

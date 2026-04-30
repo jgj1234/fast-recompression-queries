@@ -160,7 +160,7 @@ void test_string(string& s, c_size_t queryNum, string test_type, bool test_count
         RecompressionRLSLP rlslp;
         rlslp.read_from_file(input_path + ".rlslp");
         rlslp.initStructures();
-        rlslp.constructTrees();
+        //rlslp.constructTrees();
         RecompressionRLSLP rev_rlslp;
         c_size_t nonterms = rlslp.nonterm.size();
         rev_rlslp.nonterm.resize(nonterms, RLSLPNonterm('0', -1, -1));

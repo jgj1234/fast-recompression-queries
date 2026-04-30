@@ -220,7 +220,7 @@ void RecompressionRLSLP::initialize_nodes(
 
     return;
 }
-void RecompressionRLSLP::constructTrees(){
+/*void RecompressionRLSLP::constructTrees(){
   c_size_t n = nonterm.size();
   c_size_t totRounds = nonterm[n - 1].level;
   space_efficient_vector<c_size_t> leftBuckets(n), rightBuckets(n);
@@ -266,7 +266,7 @@ void RecompressionRLSLP::constructTrees(){
   leftMT.levelMask = lmask;
   rightMT = MacroMicroTree(n, rightg);
   rightMT.levelMask = rmask;
-}
+}*/
 void RecompressionRLSLP::initialize_firstNodes(
   c_size_t node, 
   c_size_t left,
@@ -500,8 +500,8 @@ c_size_t RecompressionRLSLP::lce(c_size_t i, c_size_t j) {
 Node RecompressionRLSLP::getPosition(c_size_t node, c_size_t par, c_size_t idxInPar, c_size_t left, c_size_t right, c_size_t pos, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar){
   Node curr_node(node, left, right, par, idxInPar); 
   curr_node.level = grammar[node].level;
-  if (!ancestors.empty() && idxInPar <= 0 && ancestors.top().indexInParent == idxInPar) ancestors.pop();
   ancestors.push(curr_node);
+  //pushToStack(curr_node, ancestors);
   if (left == right){
     return curr_node;
   }
@@ -520,14 +520,14 @@ Node RecompressionRLSLP::getPosition(c_size_t node, c_size_t par, c_size_t idxIn
   c_size_t skip = left + leftLength * ((pos - left) / leftLength);
   return getPosition(leftNode, node, skipTimes == nt.second - 1 ? -1 : skipTimes, skip, skip + leftLength - 1, pos, ancestors, grammar);
 }
-packed_pair<c_size_t, c_size_t> RecompressionRLSLP::First(c_size_t var, c_size_t level){
+/*packed_pair<c_size_t, c_size_t> RecompressionRLSLP::First(c_size_t var, c_size_t level){
   c_size_t k = leftMT.levelMask.getSuffCount(var, level + 1);
   return packed_pair<c_size_t, c_size_t>(leftMT.level_ancestor(var, leftMT.depths[var] - k), leftMT.level_ancestor(var, leftMT.depths[var] - k + 1));
 }
 packed_pair<c_size_t, c_size_t> RecompressionRLSLP::Last(c_size_t var, c_size_t level){
   c_size_t k = rightMT.levelMask.getSuffCount(var, level + 1);
   return packed_pair<c_size_t, c_size_t>(rightMT.level_ancestor(var, rightMT.depths[var] - k), rightMT.level_ancestor(var, rightMT.depths[var] - k + 1));
-}
+}*/
 bool RecompressionRLSLP::sameParent(Node& x, Node& y, const space_efficient_vector<RLSLPNonterm>& grammar){
   if (grammar[x.parent].level - 1 > x.level|| grammar[y.parent].level - 1 > y.level) return false;
   if (x.parent != y.parent) return false;
@@ -572,7 +572,7 @@ void RecompressionRLSLP::pushToStack(Node& x, stack<Node>& ancestors){
 // represented by `grammar`, with its compressed path to the root stored in `ancestors`, updates `ancestors` so that
 // it contains the path from the root down to `node`'s parent.
 void RecompressionRLSLP::updateStack(Node& node, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar){
-  Node parent;
+  /*Node parent;
   if (ancestors.top().var == node.var){
     ancestors.pop();
     if (ancestors.top().var == node.parent){
@@ -609,7 +609,8 @@ void RecompressionRLSLP::updateStack(Node& node, stack<Node>& ancestors, const s
     c_size_t k = rightMT.levelMask.getSuffCount(ancestors.top().var, parent.level + 1);
     parent.parent = rightMT.level_ancestor(ancestors.top().var, rightMT.depths[ancestors.top().var] - (k - 1));
   }
-  pushToStack(parent, ancestors);
+  pushToStack(parent, ancestors);*/
+  ancestors.pop();
 }
 Node RecompressionRLSLP::constructParent(Node& node, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm>& grammar){
   if (node.level < grammar[node.parent].level - 1){
@@ -644,7 +645,7 @@ c_size_t RecompressionRLSLP::lext(Node& x, const space_efficient_vector<RLSLPNon
 // node at the same level immediately to the left of `x`
 // and updates `ancestors` to reflect the path to the returned node.
 Node RecompressionRLSLP::Left(Node& x, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm> &grammar){
-  if (x.indexInParent != 0){
+  /*if (x.indexInParent != 0){
     const RLSLPNonterm& parNT = grammar[x.parent];
     c_size_t lev = x.level;
     x.level = parNT.level - 1;
@@ -705,14 +706,34 @@ Node RecompressionRLSLP::Left(Node& x, stack<Node>& ancestors, const space_effic
   Node res_node(nodeIdx, x.l - grammar[nodeIdx].explen, x.l - 1, par, -1);
   res_node.level = x.level;
   pushToStack(res_node, ancestors);
-  return res_node;
+  return res_node;*/
+  while (ancestors.top().indexInParent == 0){
+    ancestors.pop();
+  }
+  const RLSLPNonterm& lcaNT = grammar[ancestors.top().parent];
+  c_size_t sib = lcaNT.first;
+  c_size_t nidx = lcaNT.type == '1' ? 0 : ancestors.top().indexInParent - 1;
+  if (nidx == -2) nidx = lcaNT.second - 2;
+  Node leftSibling(sib, x.l - grammar[sib].explen, x.l - 1, ancestors.top().parent, nidx);
+  leftSibling.level = grammar[sib].level;
+  ancestors.pop();
+  ancestors.push(leftSibling);
+  while (grammar[ancestors.top().var].level > x.level){
+    const RLSLPNonterm& nt = grammar[ancestors.top().var];
+    c_size_t rightChild = nt.type == '1' ? nt.second : nt.first;
+    Node curr_node(rightChild, x.l - grammar[rightChild].explen, x.l - 1, ancestors.top().var, -1);
+    curr_node.level = grammar[rightChild].level;
+    ancestors.push(curr_node);
+  }
+  ancestors.top().level = x.level;
+  return ancestors.top();
 }
 // Given a node `x` covering [x.l, x.r] at recompression level `x.level` in the compressed
 // parse tree represented by `grammar`, with its compressed path to the root stored in `ancestors`, returns the nearest
 // node at the same level immediately to the right of `x`
 // and updates `ancestors` to reflect the path to the returned node.
 Node RecompressionRLSLP::Right(Node& x, stack<Node>& ancestors, const space_efficient_vector<RLSLPNonterm> &grammar){
-  if (x.indexInParent != -1){
+  /*if (x.indexInParent != -1){
     const RLSLPNonterm& parNT = grammar[x.parent];
     c_size_t lev = x.level;
     x.level = parNT.level - 1;
@@ -764,7 +785,27 @@ Node RecompressionRLSLP::Right(Node& x, stack<Node>& ancestors, const space_effi
   Node res_node(nodeIdx, x.r + 1, x.r + grammar[nodeIdx].explen, par, 0);
   res_node.level = x.level;
   pushToStack(res_node, ancestors);
-  return res_node;
+  return res_node;*/
+  while (ancestors.top().indexInParent == -1){
+    ancestors.pop();
+  }
+  const RLSLPNonterm& lcaNT = grammar[ancestors.top().parent];
+  c_size_t sib = lcaNT.type == '1' ? lcaNT.second : ancestors.top().var;
+  c_size_t nidx = ancestors.top().indexInParent + 1;
+  if (lcaNT.type == '1' || nidx == lcaNT.second - 1) nidx = -1;
+  Node rightSibling(sib, x.r + 1, x.r + grammar[sib].explen, ancestors.top().parent, nidx);
+  rightSibling.level = grammar[sib].level;
+  ancestors.pop();
+  ancestors.push(rightSibling);
+  while (grammar[ancestors.top().var].level > x.level){
+    const RLSLPNonterm& nt = grammar[ancestors.top().var];
+    c_size_t leftChild = nt.first;
+    Node curr_node(leftChild, x.r + 1, x.r + grammar[leftChild].explen, ancestors.top().var, 0);
+    curr_node.level = grammar[leftChild].level;
+    ancestors.push(curr_node);
+  }
+  ancestors.top().level = x.level;
+  return ancestors.top();
 }
 space_efficient_vector<packed_pair<c_size_t, c_size_t>> RecompressionRLSLP::getPoppedSequence(c_size_t left, c_size_t right, const space_efficient_vector<RLSLPNonterm>& grammar){
     stack<Node> lstack, rstack;
