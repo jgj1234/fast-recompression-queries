@@ -30,6 +30,9 @@
 #include "rmq_support.hpp"
 #include "rmq_succinct_sct.hpp"
 #include "wt_helper.hpp"
+#include "utils/space_efficient_vector_2D.hpp"
+#include "utils/space_efficient_vector.hpp"
+#include "utils/packed_pair.hpp"
 #include "util.hpp"
 #include <set> // for calculating the alphabet size
 #include <map> // for mapping a symbol to its lexicographical index
@@ -90,12 +93,12 @@ class wt_int
         select_1_type          m_tree_select1; // select support for the wavelet tree bit vector
         select_0_type          m_tree_select0;
         uint32_t               m_max_level = 0;
-        int64_t                m_tau = 1;
-        std::vector<rmq_succinct_sct<true>> m_tree_rmq; // rmq for each node
-        std::vector<pair<int64_t, int64_t>> childrenIDs;
-        std::vector<int64_t> weights;
-        std::vector<vector<int64_t>> m_w;
-        std::vector<vector<int64_t>> prefix_sums;
+        c_size_t               m_tau = 1;
+        space_efficient_vector<rmq_succinct_sct<true>> m_tree_rmq; // rmq for each node
+        space_efficient_vector<packed_pair<c_size_t, c_size_t>> childrenIDs;
+        space_efficient_vector<c_size_t> weights;
+        space_efficient_vector_2D<c_size_t> m_w;
+        space_efficient_vector_2D<c_size_t> prefix_sums;
         void copy(const wt_int& wt) {
             m_size         = wt.m_size;
             m_sigma        = wt.m_sigma;
@@ -180,7 +183,7 @@ class wt_int
          *        \f$ n\log|\Sigma| + O(1)\f$ bits, where \f$n=size\f$.
          */
         template<uint8_t int_width>
-        wt_int(int_vector_buffer<int_width>& buf, size_type size,vector<int64_t>& weights, bool include_rmq, bool include_index,
+        wt_int(int_vector_buffer<int_width>& buf, size_type size, space_efficient_vector<c_size_t>& weights, bool include_rmq, bool include_index,
                uint32_t max_level=0) : m_size(size), weights(weights) {
             if (0 == m_size)
                 return;
@@ -216,35 +219,35 @@ class wt_int
             tree_out_buf.write((char*) &bit_size, sizeof(bit_size));// write size of bit_vector
 
             size_type tree_pos = 0;
-            int64_t tree_word = 0;
-            m_tau = 1;
-            std::vector<int64_t> rac_weights(weights.begin(), weights.end());
-            std::vector<int64_t> buf1_weights(weights.begin(), weights.end());
-            int64_t mask_old = 1ULL<<(m_max_level);
-            std::vector<int64_t> pars;
+            c_size_t tree_word = 0;
+            m_tau = 4;
+            space_efficient_vector<c_size_t> rac_weights = weights;
+            space_efficient_vector<c_size_t> buf1_weights = weights;
+            c_size_t mask_old = 1ULL<<(m_max_level);
+            space_efficient_vector<c_size_t> pars;
             int index = 0;
             for (uint32_t k=0; k <= m_max_level; ++k) {
                 size_type          start     = 0;
-                const int64_t    mask_new = k != m_max_level ? 1ULL<<(m_max_level-k-1): 0;
-                const int64_t partMask = k != m_max_level ? mask_new << 1 : 1;
-                std::vector<int64_t> curr_level;
-                std::vector<int64_t> level_weights;
-                int64_t offset = -1;
-                int64_t prev = numeric_limits<int64_t>::max();
+                const c_size_t    mask_new = k != m_max_level ? 1ULL<<(m_max_level-k-1): 0;
+                const c_size_t partMask = k != m_max_level ? mask_new << 1 : 1;
+                space_efficient_vector<c_size_t> curr_level;
+                space_efficient_vector<c_size_t> level_weights;
+                c_size_t offset = -1;
+                c_size_t prev = numeric_limits<c_size_t>::max();
                 do {
                     size_type i           = start;
                     size_type cnt0        = 0;
                     size_type cnt1        = 0;
-                    int64_t  start_value = (rac[i]&mask_old);
-                    if (prev == numeric_limits<int64_t>::max() || ((rac[i] & (mask_old ^ partMask)) != prev)){
+                    c_size_t  start_value = (rac[i]&mask_old);
+                    if (prev == numeric_limits<c_size_t>::max() || ((rac[i] & (mask_old ^ partMask)) != prev)){
                         offset++;
                         prev = rac[i] & (mask_old ^ partMask);
                     }
                     bool oneChild = rac[i] & partMask;
-                    int64_t  x;
-                    std::vector<int64_t> curr_weights;
-                    std::vector<int64_t> node_pref;
-                    int64_t pref = 0;
+                    c_size_t  x;
+                    vector<c_size_t> curr_weights; // passed to rmq, requires more modifications to make this space_efficient_vector
+                    space_efficient_vector<c_size_t> node_pref;
+                    c_size_t pref = 0;
                     while (i < m_size and((x=rac[i])&mask_old)==start_value) {
                         pref += rac_weights[i];
                         if ((i - start) % m_tau == 0){
@@ -294,18 +297,20 @@ class wt_int
                             }
                         }
                         curr_level.push_back(index);
-                        childrenIDs.push_back(make_pair(-1,-1));
+                        childrenIDs.push_back(packed_pair<c_size_t, c_size_t>(-1, -1));
                     }
+                    prefix_sums.add_vec();
                     prefix_sums.push_back(node_pref);
                     if (k % m_tau == 0 || k == m_max_level - 1){
-                        for (int64_t weight: curr_weights){
-                            level_weights.push_back(weight);
+                        for (c_size_t i = 0; i < curr_weights.size(); i++){
+                            level_weights.push_back(curr_weights[i]);
                         }
                     }
                     start += cnt0+cnt1;
                     index++;
                 } while (start < m_size);
                 if (k % m_tau == 0 || k == m_max_level - 1){
+                    m_w.add_vec();
                     m_w.push_back(level_weights);
                 }
                 mask_old += mask_new;
@@ -676,10 +681,10 @@ class wt_int
             }
             return t_ret_type {i, result};
         }
-        int64_t identifyIndex(int pos, int level, int64_t path, std::vector<int64_t>& offsets, std::vector<int64_t>& ones_before_os){
+        c_size_t identifyIndex(int pos, int level, c_size_t path, space_efficient_vector<c_size_t>& offsets, space_efficient_vector<c_size_t>& ones_before_os){
             for (int k = level; k > 0; k--){
-                int64_t offset = offsets[k - 1];
-                int64_t ones_before_o = ones_before_os[k - 1];
+                c_size_t offset = offsets[k - 1];
+                c_size_t ones_before_o = ones_before_os[k - 1];
                 if (path&1) {
                     pos = m_tree_select1(ones_before_o + pos) - offset + 1;
                 } else {
@@ -689,60 +694,60 @@ class wt_int
             }
             return pos;
         }
-        int64_t range_sum_2d(int64_t lb, int64_t rb, int64_t vlb, int64_t vrb){
-            std::vector<int64_t> offsets(m_max_level + 1);
+        c_size_t range_sum_2d(c_size_t lb, c_size_t rb, c_size_t vlb, c_size_t vrb){
+            space_efficient_vector<c_size_t> offsets(m_max_level + 1);
             vrb = min(vrb, 1LL << m_max_level);
             return _range_sum_2d(0, lb, rb, vlb, vrb, 0, 0, m_size, offsets, 0);
         }
-        int64_t _range_sum_2d_helper(int64_t node, int64_t lb, int64_t rb, int64_t vlb, int64_t vrb, int64_t level, 
-                                    int64_t ilb, int64_t node_size, std::vector<int64_t>& offsets){
+        c_size_t _range_sum_2d_helper(c_size_t node, c_size_t lb, c_size_t rb, c_size_t vlb, c_size_t vrb, c_size_t level, 
+                                    c_size_t ilb, c_size_t node_size, space_efficient_vector<c_size_t>& offsets){
             if (lb > rb || node == -1) return 0;
-            int64_t irb = ilb + (1ULL << (m_max_level - level));
+            c_size_t irb = ilb + (1ULL << (m_max_level - level));
             if (level % m_tau == 0 || level == m_max_level - 1){
-                int64_t sm = 0;
-                int64_t levelOffset = offsets[level] - m_size * level;
-                int64_t idx = (level + m_tau - 1) / m_tau;
-                for (int64_t pos = levelOffset + lb; pos <= levelOffset + rb; pos++) sm += m_w[idx][pos];
+                c_size_t sm = 0;
+                c_size_t levelOffset = offsets[level] - m_size * level;
+                c_size_t idx = (level + m_tau - 1) / m_tau;
+                for (c_size_t pos = levelOffset + lb; pos <= levelOffset + rb; pos++) sm += m_w(idx, pos);
                 return sm;
             }
-            int64_t mid = (ilb + irb) / 2;
-            int64_t totalSum = 0;
-            int64_t offset = offsets[level];
+            c_size_t mid = (ilb + irb) / 2;
+            c_size_t totalSum = 0;
+            c_size_t offset = offsets[level];
 
-            int64_t ones_before_o    = m_tree_rank(offset);
-            int64_t ones_before_lb   = m_tree_rank(offset + lb);
-            int64_t ones_before_rb   = m_tree_rank(offset + rb + 1);
-            int64_t ones_before_end  = m_tree_rank(offset + node_size);
-            int64_t zeros_before_o   = offset - ones_before_o;
-            int64_t zeros_before_lb  = offset + lb - ones_before_lb;
-            int64_t zeros_before_rb  = offset + rb + 1 - ones_before_rb;
-            int64_t zeros_before_end = offset + node_size - ones_before_end;
+            c_size_t ones_before_o    = m_tree_rank(offset);
+            c_size_t ones_before_lb   = m_tree_rank(offset + lb);
+            c_size_t ones_before_rb   = m_tree_rank(offset + rb + 1);
+            c_size_t ones_before_end  = m_tree_rank(offset + node_size);
+            c_size_t zeros_before_o   = offset - ones_before_o;
+            c_size_t zeros_before_lb  = offset + lb - ones_before_lb;
+            c_size_t zeros_before_rb  = offset + rb + 1 - ones_before_rb;
+            c_size_t zeros_before_end = offset + node_size - ones_before_end;
             if (vlb < mid and mid) {
-                int64_t nlb    = zeros_before_lb - zeros_before_o;
-                int64_t nrb    = zeros_before_rb - zeros_before_o;
+                c_size_t nlb    = zeros_before_lb - zeros_before_o;
+                c_size_t nrb    = zeros_before_rb - zeros_before_o;
                 offsets[level+1] = offset + m_size;
                 if (nrb)
                     totalSum += _range_sum_2d_helper(childrenIDs[node].first, nlb, nrb-1, vlb, std::min(vrb,mid-1), level+1, ilb, zeros_before_end - zeros_before_o, offsets);
             }
             if (vrb >= mid) {
-                int64_t nlb     = ones_before_lb - ones_before_o;
-                int64_t nrb     = ones_before_rb - ones_before_o;
+                c_size_t nlb     = ones_before_lb - ones_before_o;
+                c_size_t nrb     = ones_before_rb - ones_before_o;
                 offsets[level+1]  = offset + m_size + (zeros_before_end - zeros_before_o);
                 if (nrb)
                     totalSum += _range_sum_2d_helper(childrenIDs[node].second, nlb, nrb-1, std::max(mid, vlb), vrb, level+1, mid, ones_before_end - ones_before_o, offsets);
             }
             return totalSum;
         }
-        int64_t _range_sum_2d(int64_t node, int64_t lb, int64_t rb, int64_t vlb, int64_t vrb, int64_t level, 
-                              int64_t ilb, int64_t node_size, std::vector<int64_t>& offsets, size_type path){
+        c_size_t _range_sum_2d(c_size_t node, c_size_t lb, c_size_t rb, c_size_t vlb, c_size_t vrb, c_size_t level, 
+                              c_size_t ilb, c_size_t node_size, space_efficient_vector<c_size_t>& offsets, size_type path){
             if (lb > rb || node == -1){
                 return 0;
             }
-            int64_t irb = ilb + (1ULL << (m_max_level - level));
+            c_size_t irb = ilb + (1ULL << (m_max_level - level));
             if (ilb >= vlb && irb - 1 <= vrb){
-                int64_t totSm = prefix_sums[node][rb / m_tau];
+                c_size_t totSm = prefix_sums(node, rb / m_tau);
                 if (lb > 0){
-                    totSm -= prefix_sums[node][(lb - 1) / m_tau];
+                    totSm -= prefix_sums(node, (lb - 1) / m_tau);
                     if ((lb - 1) % m_tau != 0){
                         totSm -= _range_sum_2d_helper(node, (lb - 1) - ((lb - 1) % m_tau) + 1, lb - 1, vlb, vrb, level, ilb, node_size, offsets);
                     }
@@ -752,75 +757,75 @@ class wt_int
                 }
                 return totSm;
             }
-            int64_t mid = (ilb + irb) / 2;
-            int64_t totalSum = 0;
-            int64_t offset = offsets[level];
+            c_size_t mid = (ilb + irb) / 2;
+            c_size_t totalSum = 0;
+            c_size_t offset = offsets[level];
 
-            int64_t ones_before_o    = m_tree_rank(offset);
-            int64_t ones_before_lb   = m_tree_rank(offset + lb);
-            int64_t ones_before_rb   = m_tree_rank(offset + rb + 1);
-            int64_t ones_before_end  = m_tree_rank(offset + node_size);
-            int64_t zeros_before_o   = offset - ones_before_o;
-            int64_t zeros_before_lb  = offset + lb - ones_before_lb;
-            int64_t zeros_before_rb  = offset + rb + 1 - ones_before_rb;
-            int64_t zeros_before_end = offset + node_size - ones_before_end;
+            c_size_t ones_before_o    = m_tree_rank(offset);
+            c_size_t ones_before_lb   = m_tree_rank(offset + lb);
+            c_size_t ones_before_rb   = m_tree_rank(offset + rb + 1);
+            c_size_t ones_before_end  = m_tree_rank(offset + node_size);
+            c_size_t zeros_before_o   = offset - ones_before_o;
+            c_size_t zeros_before_lb  = offset + lb - ones_before_lb;
+            c_size_t zeros_before_rb  = offset + rb + 1 - ones_before_rb;
+            c_size_t zeros_before_end = offset + node_size - ones_before_end;
             if (vlb < mid and mid) {
-                int64_t nlb    = zeros_before_lb - zeros_before_o;
-                int64_t nrb    = zeros_before_rb - zeros_before_o;
+                c_size_t nlb    = zeros_before_lb - zeros_before_o;
+                c_size_t nrb    = zeros_before_rb - zeros_before_o;
                 offsets[level+1] = offset + m_size;
                 if (nrb)
                     totalSum += _range_sum_2d(childrenIDs[node].first, nlb, nrb-1, vlb, std::min(vrb,mid-1), level+1, ilb, zeros_before_end - zeros_before_o, offsets, path<<1);
             }
             if (vrb >= mid) {
-                int64_t nlb     = ones_before_lb - ones_before_o;
-                int64_t nrb     = ones_before_rb - ones_before_o;
+                c_size_t nlb     = ones_before_lb - ones_before_o;
+                c_size_t nrb     = ones_before_rb - ones_before_o;
                 offsets[level+1]  = offset + m_size + (zeros_before_end - zeros_before_o);
                 if (nrb)
                     totalSum += _range_sum_2d(childrenIDs[node].second, nlb, nrb-1, std::max(mid, vlb), vrb, level+1, mid, ones_before_end - ones_before_o, offsets, (path<<1)+1);
             }
             return totalSum;
         }
-        int64_t range_minimum_2d(int64_t lb, int64_t rb, int64_t vlb, int64_t vrb){
-            std::vector<int64_t> offsets(m_max_level + 1), ones_before_os(m_max_level + 1);
+        c_size_t range_minimum_2d(c_size_t lb, c_size_t rb, c_size_t vlb, c_size_t vrb){
+            space_efficient_vector<c_size_t> offsets(m_max_level + 1), ones_before_os(m_max_level + 1);
             vrb = min(vrb, 1LL << m_max_level);
             return _range_minimum_2d(0, lb, rb, vlb, vrb, 0, 0, m_size, offsets, ones_before_os, 0);
         }
         
-        int64_t _range_minimum_2d(int64_t node, int64_t lb, int64_t rb, int64_t vlb, int64_t vrb, int64_t level, 
-                              int64_t ilb, int64_t node_size, std::vector<int64_t>& offsets,
-                            std::vector<int64_t>& ones_before_os, size_type path){
+        c_size_t _range_minimum_2d(c_size_t node, c_size_t lb, c_size_t rb, c_size_t vlb, c_size_t vrb, c_size_t level, 
+                              c_size_t ilb, c_size_t node_size, space_efficient_vector<c_size_t>& offsets,
+                            space_efficient_vector<c_size_t>& ones_before_os, size_type path){
             if (lb > rb || node == -1){
-                return numeric_limits<int64_t>::max();
+                return numeric_limits<c_size_t>::max();
             }
-            int64_t irb = ilb + (1LL << (m_max_level - level));
+            c_size_t irb = ilb + (1LL << (m_max_level - level));
             if (ilb >= vlb && irb - 1 <= vrb){
-                int64_t minIndex = m_tree_rmq[node](lb, rb);
-                int64_t originalIndex = identifyIndex(minIndex + 1, level, path, offsets, ones_before_os);
+                c_size_t minIndex = m_tree_rmq[node](lb, rb);
+                c_size_t originalIndex = identifyIndex(minIndex + 1, level, path, offsets, ones_before_os);
                 return weights[originalIndex - 1];
             }
-            int64_t mid = (ilb + irb) / 2;
-            int64_t minResult = numeric_limits<int64_t>::max();
-            int64_t offset = offsets[level];
+            c_size_t mid = (ilb + irb) / 2;
+            c_size_t minResult = numeric_limits<c_size_t>::max();
+            c_size_t offset = offsets[level];
 
-            int64_t ones_before_o    = m_tree_rank(offset);
+            c_size_t ones_before_o    = m_tree_rank(offset);
             ones_before_os[level]      = ones_before_o;
-            int64_t ones_before_lb   = m_tree_rank(offset + lb);
-            int64_t ones_before_rb   = m_tree_rank(offset + rb + 1);
-            int64_t ones_before_end  = m_tree_rank(offset + node_size);
-            int64_t zeros_before_o   = offset - ones_before_o;
-            int64_t zeros_before_lb  = offset + lb - ones_before_lb;
-            int64_t zeros_before_rb  = offset + rb + 1 - ones_before_rb;
-            int64_t zeros_before_end = offset + node_size - ones_before_end;
+            c_size_t ones_before_lb   = m_tree_rank(offset + lb);
+            c_size_t ones_before_rb   = m_tree_rank(offset + rb + 1);
+            c_size_t ones_before_end  = m_tree_rank(offset + node_size);
+            c_size_t zeros_before_o   = offset - ones_before_o;
+            c_size_t zeros_before_lb  = offset + lb - ones_before_lb;
+            c_size_t zeros_before_rb  = offset + rb + 1 - ones_before_rb;
+            c_size_t zeros_before_end = offset + node_size - ones_before_end;
             if (vlb < mid and mid) {
-                int64_t nlb    = zeros_before_lb - zeros_before_o;
-                int64_t nrb    = zeros_before_rb - zeros_before_o;
+                c_size_t nlb    = zeros_before_lb - zeros_before_o;
+                c_size_t nrb    = zeros_before_rb - zeros_before_o;
                 offsets[level+1] = offset + m_size;
                 if (nrb)
                     minResult = min(minResult, _range_minimum_2d(childrenIDs[node].first, nlb, nrb-1, vlb, std::min(vrb,mid-1), level+1, ilb, zeros_before_end - zeros_before_o, offsets, ones_before_os, path<<1));
             }
             if (vrb >= mid) {
-                int64_t nlb     = ones_before_lb - ones_before_o;
-                int64_t nrb     = ones_before_rb - ones_before_o;
+                c_size_t nlb     = ones_before_lb - ones_before_o;
+                c_size_t nrb     = ones_before_rb - ones_before_o;
                 offsets[level+1]  = offset + m_size + (zeros_before_end - zeros_before_o);
                 if (nrb)
                     minResult = min(minResult, _range_minimum_2d(childrenIDs[node].second, nlb, nrb-1, std::max(mid, vlb), vrb, level+1, mid, ones_before_end - ones_before_o, offsets, ones_before_os, (path<<1)+1));
@@ -836,27 +841,27 @@ class wt_int
          *  \return Pair (#of found points, vector of points), the vector is empty when
          *          report = false.
          */
-        std::vector<int>
+        space_efficient_vector<c_size_t>
         range_search_2d(size_type lb, size_type rb, value_type vlb, value_type vrb,
                         bool report=true) const {
-            std::vector<size_type> offsets(m_max_level+1);
-            std::vector<size_type> ones_before_os(m_max_level+1);
+            space_efficient_vector<c_size_t> offsets(m_max_level+1);
+            space_efficient_vector<c_size_t> ones_before_os(m_max_level+1);
             offsets[0] = 0;
             if (vrb > (1ULL << m_max_level))
                 vrb = (1ULL << m_max_level);
             if (vlb > vrb)
-                return vector<int>();
+                return space_efficient_vector<c_size_t>();
             size_type cnt_answers = 0;
-            vector<int> point_vec;
+            space_efficient_vector<c_size_t> point_vec;
             _range_search_2d(lb, rb, vlb, vrb, 0, 0, m_size, offsets, ones_before_os, 0, point_vec, report, cnt_answers);
             return point_vec;
         }
 
         void
         _range_search_2d(size_type lb, size_type rb, value_type vlb, value_type vrb, size_type level,
-                         size_type ilb, size_type node_size, std::vector<size_type>& offsets,
-                         std::vector<size_type>& ones_before_os, size_type path,
-                         vector<int>& point_vec, bool report, size_type& cnt_answers)
+                         size_type ilb, size_type node_size, space_efficient_vector<c_size_t>& offsets,
+                         space_efficient_vector<c_size_t>& ones_before_os, size_type path,
+                         space_efficient_vector<c_size_t>& point_vec, bool report, size_type& cnt_answers)
         const {
             if (lb > rb)
                 return;
@@ -876,7 +881,7 @@ class wt_int
                             }
                             c >>= 1;
                         }
-                        point_vec.emplace_back(weights[i - 1]);
+                        point_vec.push_back(weights[i - 1]);
                     }
                 }
                 cnt_answers += rb-lb+1;

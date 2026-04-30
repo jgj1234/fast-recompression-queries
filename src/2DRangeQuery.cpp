@@ -40,15 +40,11 @@ RangeQuery::RangeQuery(
     string buffer_name = "temp_buffer";
     sdsl::int_vector_buffer<64> buf(buffer_name, ios::out);
     for (c_size_t i = 0; i < n; i++) buf.push_back(this->rankY[i]);
-    vector<c_size_t> w(n); // temporary until we clean up wt int code
-    for (int i = 0; i < n; i++) w[i] = weights[i];
-    this->wavelet_tree = sdsl::wt_int<> (buf, n, w, queryType == 1, queryType > 0);
+    this->wavelet_tree = sdsl::wt_int<> (buf, n, weights, queryType == 1, queryType > 0);
     sdsl::remove(buffer_name);
 }
 space_efficient_vector<c_size_t> RangeQuery::rangeReport(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
-    space_efficient_vector<c_size_t> res;
-    vector<int> r = this->wavelet_tree.range_search_2d(x1, x2, y1, y2);
-    for (int i = 0; i < r.size(); i++) res.push_back(r[i]);
+    space_efficient_vector<c_size_t> res = this->wavelet_tree.range_search_2d(x1, x2, y1, y2);
     return res;
 }
 c_size_t RangeQuery::rangeMinimum(c_size_t x1, c_size_t x2, c_size_t y1, c_size_t y2){
